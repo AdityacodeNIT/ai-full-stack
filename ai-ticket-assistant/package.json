@@ -1,0 +1,31 @@
+{
+  "name": "y",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon index.js",
+    "inngest-dev": "npx i inggest-cli dev"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^1.2.22",
+    "@inngest/agent-kit": "^0.9.0",
+    "@vapi-ai/web": "^2.3.8",
+    "ai": "^4.3.19",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
+    "ingest": "^1.0.0",
+    "inngest": "^3.40.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.16.3",
+    "nodemailer": "^7.0.5"
+  }
+}
