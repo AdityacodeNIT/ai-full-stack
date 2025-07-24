@@ -4,11 +4,12 @@ import Interview from "../models/interview.js";
 import mongoose from "mongoose";// Corrected casing for consistency if needed
 
 export const createInterview = async (req, res) => {
+    console.log("request came")
     // Destructure variables from the request body
-    const { type, role, level, techstack, amount, userId } = req.body;
+    const { type, role, level, techstack, amount } = req.body;
 
     // --- Basic Validation ---
-    if (!role || !level || !amount || !userId) { // userId also required now as per schema
+    if (!role || !level || !amount ) { // userId also required now as per schema
         return res.status(400).json({ message: 'Missing required parameters: role, level, amount, or userId.' });
     }
 
@@ -64,10 +65,11 @@ Return the questions formatted like this:
             techstack: techstack ? techstack.split(',').map(s => s.trim()) : [], // Split and trim tech stack, handle empty
             questions: generatedQuestionsArray, // Matches schema field name
             numberOfQuestions: amount, // New field in schema
-            userId: new mongoose.Types.ObjectId(userId),
+            userId: req.user?._id,
             finalized: true // As per your original code
             // Other fields from comprehensive schema can be added here as needed
         });
+        console.log(interview)
 
         // --- Send Success Response (Corrected Syntax) ---
         return res.status(200).json({
@@ -88,3 +90,7 @@ Return the questions formatted like this:
         });
     }
 };
+
+export const getInterview=async(req,res)=>{
+    res.json({success:true,data:"thank you"})
+}

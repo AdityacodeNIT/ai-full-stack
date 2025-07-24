@@ -1,12 +1,13 @@
 import express from "express"
-import { createInterview } from "../controllers/interviewRoutes.js";
+import { createInterview, getInterview } from "../controllers/interviewRoutes.js";
 import { authenticate } from "../middleware/auth.js";
 
 const router=express.Router();
 
 // router.post("/",authenticate,createInterview)
 
-router.post("/",createInterview)
+router.post("/",authenticate,createInterview)
+router.get("/",getInterview)
 
 // router.post("/login",login);
 // router.post("/logout",logout);

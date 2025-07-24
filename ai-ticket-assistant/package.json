@@ -8,7 +8,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon index.js",
-      "start": "node index.js",
+    "start": "node index.js",
     "inngest-dev": "npx i inggest-cli dev"
   },
   "devDependencies": {
@@ -16,17 +16,21 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.22",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@inngest/agent-kit": "^0.9.0",
     "@vapi-ai/web": "^2.3.8",
     "ai": "^4.3.19",
+    "assemblyai": "^4.14.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
+    "fluent-ffmpeg": "^2.1.3",
     "ingest": "^1.0.0",
     "inngest": "^3.40.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.16.3",
-    "nodemailer": "^7.0.5"
+    "nodemailer": "^7.0.5",
+    "ws": "^8.18.3"
   }
 }
