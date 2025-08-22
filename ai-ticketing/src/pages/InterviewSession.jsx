@@ -130,6 +130,7 @@ const InterviewSession = ({ interviewId }) => {
       assemblySocket.current = socket;
       connectionStateRef.current = 'connecting';
 
+<<<<<<< HEAD:ai-ticketing/src/pages/interview.jsx
       socket.onopen = async () => {
         console.log("[WebSocket] AssemblyAI socket connected.");
         connectionStateRef.current = 'connected';
@@ -143,6 +144,26 @@ const InterviewSession = ({ interviewId }) => {
           // Resume if suspended (required by browser autoplay policies)
           if (audioContextRef.current.state === 'suspended') {
             await audioContextRef.current.resume();
+=======
+      const socket = new WebSocket(`${import.meta.env.VITE_WS_URL}/assembly`);
+      socket.binaryType = 'arraybuffer';
+
+      socket.onopen = () => {
+        console.log('🎤 AssemblyAI socket connected');
+        setIsTranscribing(true);
+
+        const recorder = new MediaRecorder(stream, {
+          mimeType: 'audio/webm;codecs=opus',
+        });
+        mediaRecorderRef.current = recorder;
+
+        recorder.ondataavailable = (e) => {
+          if (socket.readyState === WebSocket.OPEN) {
+            e.data.arrayBuffer().then((buf) => {
+              socket.send(buf);
+              console.log(`✉️ sendAudio ${buf.byteLength}B`);
+            });
+>>>>>>> ba77a9a70fdc21cc75c2f4f4445dcacd2a63b38c:ai-ticketing/src/pages/InterviewSession.jsx
           }
 
           // Load and create AudioWorklet
@@ -242,6 +263,7 @@ const InterviewSession = ({ interviewId }) => {
     }
   };
 
+<<<<<<< HEAD:ai-ticketing/src/pages/interview.jsx
   const handleSubmitAnswer = async () => {
     try {
       await stopTranscription();
@@ -267,6 +289,17 @@ const InterviewSession = ({ interviewId }) => {
       setError('Failed to submit answer: ' + err.message);
     }
   };
+=======
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        setError("Authentication token not found. Please log in again.");
+        return;
+    }
+
+    const wsUrl = `${import.meta.env.VITE_WS_URL}/ws/interview?token=${token}`;
+    interviewSocket.current = new WebSocket(wsUrl);
+>>>>>>> ba77a9a70fdc21cc75c2f4f4445dcacd2a63b38c:ai-ticketing/src/pages/InterviewSession.jsx
 
   const startInterview = async () => {
     setError(null);

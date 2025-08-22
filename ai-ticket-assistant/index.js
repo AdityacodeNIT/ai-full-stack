@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import http from "http";
 import cors from "cors";
 import { parse } from "url";
+import jwt from "jsonwebtoken";
 
 import userRoutes from "./routes/user.js";
 import TicketRoutes from "./routes/ticket.js";
@@ -28,7 +29,7 @@ const assemblyWSS = createAssemblySocket();
 
 // Centralized upgrade handler
 server.on("upgrade", (req, socket, head) => {
-  const { pathname } = parse(req.url);
+    const { pathname, query } = parse(req.url, true);
 
   if (pathname && pathname.startsWith("/ws/interview")) {
     interviewWSS.handleUpgrade(req, socket, head, (ws) => {
@@ -41,6 +42,35 @@ server.on("upgrade", (req, socket, head) => {
   } else {
     socket.destroy();
   }
+    if (pathname && pathname.startsWith("/ws/interview")) {
+        const token = query.token;
+
+        if (!token) {
+            socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+            socket.destroy();
+            return;
+        }
+
+        jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+            if (err) {
+                socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+                socket.destroy();
+                return;
+            }
+
+            req.user = decoded; // Attach user to the request
+            interviewWSS.handleUpgrade(req, socket, head, (ws) => {
+                interviewWSS.emit("connection", ws, req);
+            });
+        });
+
+    } else if (pathname && pathname.startsWith("/assembly")) {
+        assemblyWSS.handleUpgrade(req, socket, head, (ws) => {
+            assemblyWSS.emit("connection", ws, req);
+        });
+    } else {
+        socket.destroy();
+    }
 });
 
 // === EXPRESS SETUP ===

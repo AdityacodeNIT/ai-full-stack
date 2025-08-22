@@ -42,10 +42,18 @@ export function setupInterviewSocket() {
         // --- Interview Start ---
         if (data.type === "start") {
           interviewData = await Interview.findById(data.interviewId);
-
-          if (!interviewData || !interviewData.questions?.length) {
-            return sendError("Interview not found or has no questions.", true);
+          if (!interviewData) {
+            return ws.send(JSON.stringify({ type: "error", message: "Interview not found." }));
           }
+
+          // Authorize user
+          if (interviewData.userId.toString() !== req.user.id) {
+              return ws.send(JSON.stringify({ type: "error", message: "Unauthorized." }));
+          }
+
+          // Update status to in-progress
+          interviewData.status = 'in-progress';
+          await interviewData.save();
 
           currentIndex = 0;
           results.length = 0;
@@ -72,11 +80,11 @@ export function setupInterviewSocket() {
           // analyze the response
           const analysis = await analyzeResponse(responseText, question);
 
-          // save results
-          results.push({
+          // Store for overall summary later
+          allAnalyses.push({
             question,
-            yourResponse: responseText,
-            ...analysis, // expected to return { summary, idealAnswer }
+            response: data.response,
+            analysis
           });
 
           // send feedback
@@ -93,16 +101,18 @@ export function setupInterviewSocket() {
               })
             );
           } else {
-            // interview is over
-            // const finalReport = generateFinalReport(results);
-            // ws.send(JSON.stringify({ type: "finalReport", report: finalReport }));
+            // interview done – generate final summary
+            const finalReport = await summarizeOverallFeedback(allAnalyses);
 
-            ws.send(
-              JSON.stringify({ type: "end", message: "Interview complete!" })
-            );
+            ws.send(JSON.stringify({
+              type: "finalReport",
+              report: finalReport
+            }));
 
-            interviewData.results = results;
-            await interviewData.save();
+            ws.send(JSON.stringify({
+              type: "end",
+              message: "✅ Interview complete. You can now view your feedback."
+            }));
 
             ws.close();
           }
