@@ -6,34 +6,47 @@ import { inngest } from '../inngest/client.js'
 
 
 
-export const signup=async(req,res)=>{
-    const {email,password,skills=[]}=req.body;
+export const signup = async (req, res) => {
+  let { email, password, skills = [] } = req.body;
 
-    try {
-        const hashedPassowrd=await bcrypt.hash(password,10);
-   const user=await User.create({email,password:hashedPassowrd,skills})
-   console.log(user);
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-      // fire inngest events
-      await inngest.send({
-        name:"user/signup",
-        data:{
-            email
-        }
-      })
+    // Ensure skills are in correct object format
+    skills = skills.map(skill =>
+      typeof skill === "string"
+        ? { name: skill, level: "Beginner", verified: false }
+        : skill
+    );
 
-    const token=  jwt.sign({_id:user._id,role:user.role},process.env.JWT_SECRET);
+    const user = await User.create({
+      email,
+      password: hashedPassword,
+      skills
+    });
 
-    res.json({user,token});
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
+    console.log(user);
+
+    await inngest.send({
+      name: "user/signup",
+      data: { email }
+    });
+
+    const token = jwt.sign(
+      { _id: user._id, role: user.role },
+      process.env.JWT_SECRET
+    );
+
+    res.json({ user, token });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
       message: "signup_failed",
       details: error.message,
     });
-    
-    }
-}
+  }
+};
+
 
 export const login=async(req,res)=>{
     const {email,password}=req.body;
@@ -87,29 +100,43 @@ res.json({message:"User loggedOut Successfully"});
     
     }
 }
+export const updateUser = async (req, res) => {
+  let { skills = [], role, email } = req.body;
 
-export const updateUser=async(req,res)=>
-{
-    const {skills=[],role,email}=req.body
-try {
-    if(req.user?.role!=="admin"){
-        return res.status(403).json({error:forbidden});
+  try {
+    if (req.user?.role !== "admin") {
+      return res.status(403).json({ error: "forbidden" });
     }
-    const user=await User.findOne({email});
-    if(!user)res.staus(401).
-    json({error:"user not found"});
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ error: "user not found" });
+    }
+
+    // Ensure skills are stored in correct object format
+    skills = skills.map(skill =>
+      typeof skill === "string"
+        ? { name: skill, level: "Beginner", verified: false }
+        : skill
+    );
 
     await User.updateOne(
-    {email},
-    {skills:skills.length?skills:user.skills,role}
+      { email },
+      {
+        skills: skills.length ? skills : user.skills,
+        role: role ?? user.role
+      }
+    );
 
-    )
-    return res.json({message:"User updated Successfully"});
-} catch (error) {
-      res.status(500).json({error:"update_failed",
-            details:error.message})
-}
-}
+    return res.json({ message: "User updated successfully" });
+  } catch (error) {
+    res.status(500).json({
+      error: "update_failed",
+      details: error.message
+    });
+  }
+};
+
 
 
 export const getUser=async(req,res)=>

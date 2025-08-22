@@ -83,16 +83,22 @@ export const onTicketCreated = inngest.createFunction(
       console.log(moderator);
 
       // 6. Email notification
-      await step.run("send-email-notification", async () => {
-        if (moderator) {
-          const finalticket = await Ticket.findById(ticketobj._id);
-          await sendMail(
-            moderator.email,
-            "TICKET-ASSIGNED",
-            `A new ticket has been assigned to you: ${finalticket.title}`
-          );
-        }
-      });
+  await step.run("send-email-notification", async () => {
+  if (!moderator) {
+    console.warn("⚠ No moderator assigned, skipping email");
+    return;
+  }
+
+  const finalticket = await Ticket.findById(ticketobj._id);
+
+  console.log(`📧 Sending ticket assignment email to ${moderator.email}`);
+  await sendMail(
+    moderator.email,
+    "TICKET-ASSIGNED",
+    `A new ticket has been assigned to you: ${finalticket.title}`
+  );
+});
+
 
       return { success: true };
 

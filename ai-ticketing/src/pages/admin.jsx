@@ -10,32 +10,26 @@ export default function AdminPanel() {
   const token = localStorage.getItem("token");
 
   useEffect(() => {
-  if (token) fetchUsers();
+    if (token) fetchUsers();
     console.log("useEffect running with token:", token);
-}, [token]);              // ← reruns when token is saved after login
-
-
-
-
-
-
+  }, [token]);
 
   const fetchUsers = async () => {
-      console.log("📡 fetchUsers() called")
+    console.log("📡 fetchUsers() called");
     try {
       const res = await fetch(
-        
-        `${import.meta.env.VITE_SERVER_URL}/api/auth/getusers`, {
-           method:"GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-       
-      });
-          console.log("🧾 Response received:", res);
-    
+        `${import.meta.env.VITE_SERVER_URL}/api/auth/getusers`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      console.log("🧾 Response received:", res);
+
       const data = await res.json();
-        console.log(data);
+      console.log(data);
       if (res.ok) {
         setUsers(data);
         setFilteredUsers(data);
@@ -51,7 +45,7 @@ export default function AdminPanel() {
     setEditingUser(user.email);
     setFormData({
       role: user.role,
-      skills: user.skills?.join(", "),
+      skills: user.skills.map(s => s.name).join(", "),
     });
   };
 
@@ -70,8 +64,12 @@ export default function AdminPanel() {
             role: formData.role,
             skills: formData.skills
               .split(",")
-              .map((skill) => skill.trim())
-              .filter(Boolean),
+              .map(skill => ({
+                name: skill.trim(),
+                level: "Beginner", // default or choose from UI
+                verified: false
+              }))
+              .filter(s => s.name),
           }),
         }
       );
@@ -113,16 +111,12 @@ export default function AdminPanel() {
           key={user._id}
           className="bg-base-100 shadow rounded p-4 mb-4 border"
         >
-          <p>
-            <strong>Email:</strong> {user.email}
-          </p>
-          <p>
-            <strong>Current Role:</strong> {user.role}
-          </p>
+          <p><strong>Email:</strong> {user.email}</p>
+          <p><strong>Current Role:</strong> {user.role}</p>
           <p>
             <strong>Skills:</strong>{" "}
             {user.skills && user.skills.length > 0
-              ? user.skills.join(", ")
+              ? user.skills.map(s => s.name).join(", ")
               : "N/A"}
           </p>
 

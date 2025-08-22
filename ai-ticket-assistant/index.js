@@ -16,6 +16,7 @@ import { onTicketCreated } from "./inngest/function/on-ticket-create.js";
 
 import { setupInterviewSocket } from "./websocket/server.js";       // returns interviewWSS
 import { createAssemblySocket } from "./websocket/assemblysocket.js";  // returns assemblyWSS
+import { AssemblyAI } from "assemblyai";
 
 dotenv.config();
 const app = express();
@@ -33,7 +34,7 @@ server.on("upgrade", (req, socket, head) => {
     interviewWSS.handleUpgrade(req, socket, head, (ws) => {
       interviewWSS.emit("connection", ws, req);
     });
-  } else if (pathname && pathname.startsWith("/assembly")) {
+  } else if (pathname && pathname.startsWith("/ws/assembly")) {
     assemblyWSS.handleUpgrade(req, socket, head, (ws) => {
       assemblyWSS.emit("connection", ws, req);
     });
@@ -53,6 +54,7 @@ app.use(
 app.use("/api/auth", userRoutes);
 app.use("/ticket", TicketRoutes);
 app.use("/interview", interviewRoutes);
+app.use("/",AssemblyAI)
 
 const PORT = process.env.PORT || 3000;
 

@@ -16,6 +16,7 @@ import InterviewPage from "./pages/interviewPage.jsx";
 import { Provider } from "react-redux";
 import { store,persistor } from "./redux/reduxStore.jsx";
 import { PersistGate } from "redux-persist/integration/react";
+import VapiinterviewPage from "./pages/VapiinterviewPage.jsx";
 
 createRoot(document.getElementById("root")).render(
   // <StrictMode>
@@ -74,6 +75,9 @@ element={
   <InterviewPage/>
 }
 />
+<Route path="/aiInterview"
+element={<VapiinterviewPage/>}/>
+
       </Routes>
     </BrowserRouter>
        </PersistGate>

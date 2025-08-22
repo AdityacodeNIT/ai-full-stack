@@ -60,7 +60,7 @@ export default function Tickets() {
   };
 
   return (
-    <div className="p-4 max-w-3xl mx-auto">
+    <div className="p-4 max-w-3xl mx-auto bg-gray-600 text-white">
       <h2 className="text-2xl font-bold mb-4">Create Ticket</h2>
 
       <form onSubmit={handleSubmit} className="space-y-3 mb-8">
@@ -90,7 +90,7 @@ export default function Tickets() {
         {tickets.map((ticket) => (
           <Link
             key={ticket._id}
-            className="card shadow-md p-4 bg-gray-800"
+            className="card shadow-md p-4 bg-gray-800 text-white"
             to={`/ticket/${ticket._id}`}
           >
             <h3 className="font-bold text-lg">{ticket.title}</h3>

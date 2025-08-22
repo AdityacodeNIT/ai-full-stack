@@ -2,6 +2,7 @@ import { google } from '@ai-sdk/google';
 import { generateText } from 'ai';
 
 export const analyzeResponse = async (responseText) => {
+  console.log("📨 Analyzing response:", responseText);
   const prompt = `
   Analyze this interview answer:
   "${responseText}"
@@ -29,7 +30,8 @@ export const analyzeResponse = async (responseText) => {
   });
 
   try {
-    return JSON.parse(text);
+    const cleanText = text.replace(/```json\n|\n```/g, '');
+    return JSON.parse(cleanText);
   } catch (err) {
     return { summary: text, error: 'Could not parse detailed metrics' };
   }
@@ -82,8 +84,8 @@ Return the result in this JSON format:
 
   try {
     console.log(text);
-    
-    return JSON.parse(text);
+    const cleanText = text.replace(/```json\n|\n```/g, '');
+    return JSON.parse(cleanText);
   } catch (err) {
     return {
       error: "⚠️ Failed to parse the final report.",
@@ -91,4 +93,3 @@ Return the result in this JSON format:
     };
   }
 };
-
