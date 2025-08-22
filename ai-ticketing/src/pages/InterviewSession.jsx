@@ -1,231 +1,247 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 
 const InterviewSession = ({ interviewId }) => {
-  const [question, setQuestion] = useState('');
-  const [analysis, setAnalysis] = useState(null);
-  const [transcript, setTranscript] = useState('');
-  const [completed, setCompleted] = useState(false);
-  const [error, setError] = useState(null);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [finalReport, setFinalReport] = useState(null);
+    const [question, setQuestion] = useState('');
+    const [analysis, setAnalysis] = useState(null);
+    const [transcript, setTranscript] = useState('');
+    const [isTranscribing, setIsTranscribing] = useState(false);
+    const [completed, setCompleted] = useState(false);
+    const [error, setError] = useState(null);
+    const [finalReport, setFinalReport] = useState(null);
 
-  const interviewSocket = useRef(null);
-  const assemblySocket = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const mediaStreamRef = useRef(null);
+    const interviewSocket = useRef(null);
+    const assemblySocket = useRef(null);
+    const audioContextRef = useRef(null);
+    const audioWorkletNodeRef = useRef(null);
+    const mediaStreamSourceRef = useRef(null);
+    const partialTranscriptRef = useRef('');
 
-  // ✅ Text-to-Speech function
-  const speak = (text) =>
-    new Promise((resolve) => {
-      speechSynthesis.cancel();
+    // Text-to-Speech
+    const speak = useCallback((text) =>
+        new Promise((resolve) => {
+            speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            utterance.onend = () => resolve();
+            utterance.onerror = () => resolve(); // Don't block on TTS error
+            speechSynthesis.speak(utterance);
+        }), []);
 
-      const speakNow = () => {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'en-US';
+    // Stop transcription and clean up resources
+    const stopAssemblyTranscription = useCallback(() => {
+        if (!isTranscribing) return;
 
-        utterance.onend = () => {
-          console.log('🔊 TTS finished.');
-          resolve();
-        };
+        setIsTranscribing(false);
+        console.log('🛑 Stopping transcription...');
 
-        utterance.onerror = (err) => {
-          console.error('❌ TTS error:', err);
-          resolve();
-        };
+        // Stop audio worklet
+        audioWorkletNodeRef.current?.port.postMessage({ command: 'stop' });
 
-        speechSynthesis.speak(utterance);
-      };
-
-      if (speechSynthesis.getVoices().length > 0) {
-        speakNow();
-      } else {
-        speechSynthesis.onvoiceschanged = () => speakNow();
-      }
-
-      setTimeout(() => {
-        if (!speechSynthesis.speaking) {
-          console.warn('⚠️ TTS timeout: forcing resolve');
-          resolve();
+        // Disconnect and close audio context
+        mediaStreamSourceRef.current?.disconnect();
+        if (audioContextRef.current?.state !== 'closed') {
+            audioContextRef.current?.close();
         }
-      }, 7000);
-    });
 
-  // ✅ Stop transcription
-  const stopAssemblyTranscription = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-    }
-    if (assemblySocket.current?.readyState === WebSocket.OPEN) {
-      assemblySocket.current.close();
-    }
-    setIsTranscribing(false);
-    console.log('🛑 Stopped transcription.');
+        // Close AssemblyAI socket
+        if (assemblySocket.current?.readyState === WebSocket.OPEN) {
+            assemblySocket.current.close();
+        }
 
-    if (transcript.trim()) {
-      console.log('✅ Sending manual response:', transcript.trim());
-      interviewSocket.current?.send(
-        JSON.stringify({ type: 'response', response: transcript.trim() })
-      );
-    }
-  };
+        // Send final response if there's a transcript
+        const finalTranscript = partialTranscriptRef.current.trim();
+        if (finalTranscript) {
+            console.log('✅ Sending final response:', finalTranscript);
+            interviewSocket.current?.send(
+                JSON.stringify({ type: 'response', response: finalTranscript })
+            );
+            partialTranscriptRef.current = ''; // Reset for next question
+            setTranscript('');
+        }
+    }, [isTranscribing]);
 
-  // ✅ Start transcription
-  const startAssemblyTranscription = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaStreamRef.current = stream;
+    // Start transcription
+    const startAssemblyTranscription = useCallback(async () => {
+        if (isTranscribing) return;
 
-      const socket = new WebSocket(`${import.meta.env.VITE_WS_URL}/assembly`);
-      assemblySocket.current = socket;
-      socket.binaryType = 'arraybuffer';
+        console.log('🚀 Starting transcription...');
+        setError(null);
+        partialTranscriptRef.current = '';
 
-      socket.onopen = () => {
-        console.log('✅ Assembly WebSocket connected');
-        mediaRecorderRef.current = new MediaRecorder(stream, {
-          mimeType: 'audio/webm;codecs=opus',
-        });
+        try {
+            // 1. Get user media
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 48000 } });
 
-        mediaRecorderRef.current.ondataavailable = (event) => {
-          if (event.data.size > 0 && assemblySocket.current?.readyState === WebSocket.OPEN) {
-            assemblySocket.current.send(event.data);
-          }
+            // 2. Setup AudioContext and Worklet
+            const context = new (window.AudioContext || window.webkitAudioContext)();
+            audioContextRef.current = context;
+
+            await context.audioWorklet.addModule('/audio-processor.js');
+            const workletNode = new AudioWorkletNode('audio-processor', {
+                processorOptions: { sampleRate: context.sampleRate },
+            });
+            audioWorkletNodeRef.current = workletNode;
+
+            // 3. Connect audio source to worklet
+            const source = context.createMediaStreamSource(stream);
+            mediaStreamSourceRef.current = source;
+            source.connect(workletNode).connect(context.destination);
+
+            // 4. Setup AssemblyAI WebSocket
+            const socket = new WebSocket(`${import.meta.env.VITE_WS_URL}/assembly`);
+            assemblySocket.current = socket;
+            socket.binaryType = 'arraybuffer';
+
+            socket.onopen = () => {
+                console.log('✅ AssemblyAI WebSocket connected');
+                workletNode.port.postMessage({ command: 'start' });
+                setIsTranscribing(true);
+            };
+
+            // 5. Listen for audio data from worklet and send to socket
+            workletNode.port.onmessage = (event) => {
+                if (socket.readyState === WebSocket.OPEN) {
+                    socket.send(event.data.audioData);
+                }
+            };
+
+            // 6. Handle transcripts from AssemblyAI
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.text) {
+                    if (data.isFinal) {
+                        partialTranscriptRef.current = `${partialTranscriptRef.current} ${data.text}`.trim();
+                        setTranscript(partialTranscriptRef.current);
+                    } else {
+                        setTranscript(`${partialTranscriptRef.current} ${data.text}`.trim());
+                    }
+                }
+            };
+
+            socket.onerror = (err) => setError('Transcription connection error.');
+            socket.onclose = () => console.log('🔴 AssemblyAI WebSocket closed');
+
+        } catch (err) {
+            console.error('🎤 Microphone or Worklet error:', err);
+            setError('Microphone access denied or unavailable.');
+            stopAssemblyTranscription();
+        }
+    }, [isTranscribing, stopAssemblyTranscription]);
+
+    // Handle incoming questions
+    const handleNewQuestion = useCallback(async (newQuestion) => {
+        setQuestion(newQuestion);
+        setAnalysis(null);
+        setTranscript('');
+        partialTranscriptRef.current = '';
+        await speak(newQuestion);
+        await startAssemblyTranscription();
+    }, [speak, startAssemblyTranscription]);
+
+    // Main interview WebSocket logic
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            setError('Authentication token not found.');
+            return;
+        }
+
+        const wsUrl = `${import.meta.env.VITE_WS_URL}/ws/interview?token=${token}`;
+        interviewSocket.current = new WebSocket(wsUrl);
+
+        interviewSocket.current.onopen = () => {
+            console.log('✅ Interview WebSocket connected');
+            interviewSocket.current.send(JSON.stringify({ type: 'start', interviewId }));
         };
 
-        mediaRecorderRef.current.start(250);
-        setIsTranscribing(true);
-      };
+        interviewSocket.current.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            switch (data.type) {
+                case 'question':
+                    handleNewQuestion(data.question);
+                    break;
+                case 'analysis':
+                    setAnalysis(data.analysis);
+                    break;
+                case 'finalReport':
+                    setFinalReport(data.report);
+                    break;
+                case 'end':
+                    stopAssemblyTranscription();
+                    setCompleted(true);
+                    break;
+                case 'error':
+                    setError(data.message || 'An unknown error occurred.');
+                    stopAssemblyTranscription();
+                    break;
+            }
+        };
 
-      socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.transcript) {
-          setTranscript((prev) => prev + ' ' + data.transcript);
-        }
-      };
+        interviewSocket.current.onerror = () => setError('Interview connection error.');
+        interviewSocket.current.onclose = () => console.log('🔴 Interview WebSocket closed');
 
-      socket.onerror = (err) => {
-        console.error('Assembly WS error:', err);
-        setError('Transcription connection error');
-      };
+        return () => {
+            stopAssemblyTranscription();
+            interviewSocket.current?.close();
+        };
+    }, [interviewId, handleNewQuestion, stopAssemblyTranscription]);
 
-      socket.onclose = () => {
-        console.log('🔴 Assembly WebSocket closed');
-      };
-    } catch (err) {
-      console.error('Microphone error:', err);
-      setError('Microphone access denied or unavailable');
-    }
-  };
 
-  // ✅ Handle new question (speak and start listening)
-  const handleNewQuestion = async (newQuestion) => {
-    setQuestion(newQuestion);
-    await speak(newQuestion);
-    startAssemblyTranscription();
-  };
+    return (
+        <div className="p-6 max-w-2xl mx-auto bg-gray-900 rounded-lg shadow-xl text-white font-sans">
+            <h2 className="text-2xl font-bold mb-4 text-cyan-400">🎤 AI Voice Interview</h2>
 
-  // ✅ Interview WebSocket
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setError('Authentication token not found. Please log in again.');
-      return;
-    }
+            {completed ? (
+                <div className="text-green-400 text-xl">✅ Interview completed!</div>
+            ) : (
+                <>
+                    <div className="mb-4 p-4 bg-gray-800 rounded-lg">
+                        <p className="font-semibold text-lg text-gray-200">
+                            🧠 Question: <span className="font-normal">{question || 'Waiting for question…'}</span>
+                        </p>
+                    </div>
 
-    const wsUrl = `${import.meta.env.VITE_WS_URL}/ws/interview?token=${token}`;
-    interviewSocket.current = new WebSocket(wsUrl);
+                    <div className="flex items-center space-x-3 my-4">
+                        <div className={`w-4 h-4 rounded-full ${isTranscribing ? 'bg-red-500 animate-pulse' : 'bg-gray-600'}`}></div>
+                        <p className="text-sm text-gray-400">
+                            {isTranscribing ? 'Listening…' : 'Not listening'}
+                        </p>
+                    </div>
 
-    interviewSocket.current.onopen = () => {
-      console.log('✅ Interview WebSocket connected');
-      interviewSocket.current.send(JSON.stringify({ type: 'start', interviewId }));
-    };
+                    {isTranscribing && (
+                        <button
+                            onClick={stopAssemblyTranscription}
+                            className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                            ⏹️ Stop Answering
+                        </button>
+                    )}
 
-    interviewSocket.current.onmessage = async (e) => {
-      const data = JSON.parse(e.data);
-      console.log('📩 Message:', data);
+                    {transcript && (
+                        <div className="mt-4 p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                            <p className="italic text-gray-300">🗣️ You: {transcript}</p>
+                        </div>
+                    )}
+                </>
+            )}
 
-      if (data.type === 'question') {
-        await handleNewQuestion(data.question);
-      } else if (data.type === 'analysis') {
-        setAnalysis(data.analysis);
-      } else if (data.type === 'finalReport') {
-        setFinalReport(data.report);
-      } else if (data.type === 'end') {
-        stopAssemblyTranscription();
-        setCompleted(true);
-      } else if (data.type === 'error') {
-        setError(data.message || 'Error from server');
-        stopAssemblyTranscription();
-      }
-    };
+            {error && <p className="text-red-400 mt-3 font-semibold">⚠️ {error}</p>}
 
-    interviewSocket.current.onerror = (err) => {
-      console.error('Interview WS error:', err);
-      setError('Interview connection error');
-    };
+            {analysis && (
+                <div className="mt-4 bg-gray-800 p-4 rounded-lg border border-gray-700">
+                    <strong className="text-cyan-400">AI Feedback:</strong>
+                    <p className="text-gray-300 mt-1">{typeof analysis === 'string' ? analysis : analysis.summary}</p>
+                </div>
+            )}
 
-    interviewSocket.current.onclose = () => {
-      console.log('🔴 Interview WebSocket closed');
-    };
-
-    return () => {
-      stopAssemblyTranscription();
-      interviewSocket.current?.close();
-    };
-  }, [interviewId]);
-
-  return (
-    <div className="p-6 max-w-xl mx-auto bg-black rounded shadow text-white">
-      <h2 className="text-lg font-semibold mb-4">🎤 AI Voice Interview</h2>
-
-      {completed ? (
-        <div className="text-green-500 text-xl">✅ Interview completed!</div>
-      ) : (
-        <>
-          <p className="mb-4 text-white">
-            🧠 Question: {question || 'Waiting for question…'}
-          </p>
-
-          <p className="text-sm text-gray-400">
-            {isTranscribing ? '🎙️ Listening…' : '🔇 Not listening'}
-          </p>
-
-          {isTranscribing && (
-            <button
-              onClick={stopAssemblyTranscription}
-              className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-            >
-              ⏹ Stop Answering
-            </button>
-          )}
-
-          {transcript && (
-            <p className="mt-2 italic text-gray-400">🗣️ You: {transcript}</p>
-          )}
-
-          {error && (
-            <p className="text-red-500 mt-3 font-semibold">⚠️ {error}</p>
-          )}
-
-          {analysis && (
-            <div className="mt-4 bg-gray-800 p-3 rounded">
-              <strong>AI Feedback:</strong>
-              <p>{typeof analysis === 'string' ? analysis : analysis.summary}</p>
-            </div>
-          )}
-        </>
-      )}
-
-      {finalReport && (
-        <div className="mt-6 bg-green-900 p-4 rounded">
-          <h3 className="text-lg font-bold text-green-300">📝 Final Summary</h3>
-          <p>{finalReport.overall}</p>
+            {finalReport && (
+                <div className="mt-6 bg-green-900/50 p-4 rounded-lg border border-green-700">
+                    <h3 className="text-lg font-bold text-green-300">📝 Final Summary</h3>
+                    <p className="text-gray-200 mt-2">{finalReport.overall}</p>
+                </div>
+            )}
         </div>
-      )}
-    </div>
-  );
+    );
 };
 
 export default InterviewSession;
