@@ -35,12 +35,22 @@ const interviewSchema = new Schema(
             required: true, // If every interview must be tied to a user
             default: null // You can remove default:null if required:true
         },
-        finalized: {
-            type: Boolean,
-            default: false
+        status: {
+            type: String,
+            enum: ['pending', 'in-progress', 'completed'],
+            default: 'pending'
         },
-        // You might consider adding fields for candidate responses, overall assessment etc.
-        // as per the comprehensive schema we discussed earlier, once you get to that stage.
+        responses: [
+            {
+                question: String,
+                response: String,
+                analysis: Object, // Stores the JSON from analyzeResponse
+            }
+        ],
+        finalReport: {
+            type: Object, // Stores the JSON from summarizeOverallFeedback
+            default: null,
+        }
     },
     {
         timestamps: true // Adds createdAt and updatedAt fields automatically

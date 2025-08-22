@@ -11,8 +11,8 @@ import Signup from "./pages/signup.jsx";
 import Admin from "./pages/admin.jsx";
 import CheckAuth from "./components/checkAuth.jsx";
 import Navbar from "./components/navbar.jsx";
-import Interview from "../../ai-ticket-assistant/models/interview.js";
 import InterviewPage from "./pages/interviewPage.jsx";
+import PastInterviews from "./pages/PastInterviews.jsx";
 import { Provider } from "react-redux";
 import { store,persistor } from "./redux/reduxStore.jsx";
 import { PersistGate } from "redux-persist/integration/react";
@@ -69,10 +69,29 @@ createRoot(document.getElementById("root")).render(
     </CheckAuth>
   }
 />
-<Route path="/interview"
-element={
-  <InterviewPage/>
-}
+<Route
+  path="/interview"
+  element={
+    <CheckAuth protectedRoute={true}>
+      <InterviewPage/>
+    </CheckAuth>
+  }
+/>
+<Route
+  path="/interviews"
+  element={
+    <CheckAuth protectedRoute={true}>
+      <PastInterviews />
+    </CheckAuth>
+  }
+/>
+<Route
+  path="/interviews/:id"
+  element={
+    <CheckAuth protectedRoute={true}>
+      <div>Interview Details Page</div>
+    </CheckAuth>
+  }
 />
       </Routes>
     </BrowserRouter>

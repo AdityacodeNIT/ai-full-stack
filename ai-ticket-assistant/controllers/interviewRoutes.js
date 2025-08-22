@@ -91,6 +91,31 @@ Return the questions formatted like this:
     }
 };
 
-export const getInterview=async(req,res)=>{
-    res.json({success:true,data:"thank you"})
-}
+export const getAllInterviews = async (req, res) => {
+    try {
+        const interviews = await Interview.find({ userId: req.user._id }).sort({ createdAt: -1 });
+        if (!interviews) {
+            return res.status(404).json({ message: "No interviews found for this user." });
+        }
+        res.status(200).json({ success: true, interviews });
+    } catch (error) {
+        console.error('Error fetching all interviews:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch interviews.' });
+    }
+};
+
+export const getInterviewById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const interview = await Interview.findOne({ _id: id, userId: req.user._id });
+
+        if (!interview) {
+            return res.status(404).json({ message: "Interview not found or user does not have permission." });
+        }
+
+        res.status(200).json({ success: true, interview });
+    } catch (error) {
+        console.error('Error fetching interview by ID:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch interview.' });
+    }
+};

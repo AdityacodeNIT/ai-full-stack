@@ -23,10 +23,17 @@ export function setupInterviewSocket() {
 
           interviewData = await Interview.findById(data.interviewId);
           if (!interviewData) {
-            return ws.send(
-              JSON.stringify({ type: "error", message: "Interview not found." })
-            );
+            return ws.send(JSON.stringify({ type: "error", message: "Interview not found." }));
           }
+
+          // Authorize user
+          if (interviewData.userId.toString() !== req.user.id) {
+              return ws.send(JSON.stringify({ type: "error", message: "Unauthorized." }));
+          }
+
+          // Update status to in-progress
+          interviewData.status = 'in-progress';
+          await interviewData.save();
 
           currentIndex = 0;
           ws.send(JSON.stringify({
@@ -38,12 +45,18 @@ export function setupInterviewSocket() {
           const question = interviewData.questions[currentIndex];
           const analysis = await analyzeResponse(data.response);
 
-          // Store for overall summary later
-          allAnalyses.push({
+          const responseData = {
             question,
             response: data.response,
             analysis
-          });
+          };
+
+          // Save response to DB
+          interviewData.responses.push(responseData);
+          await interviewData.save();
+
+          // Store for overall summary later
+          allAnalyses.push(responseData);
 
           ws.send(JSON.stringify({ type: "analysis", analysis }));
 
@@ -55,8 +68,12 @@ export function setupInterviewSocket() {
               question: interviewData.questions[currentIndex]
             }));
           } else {
-            // interview done – generate final summary
+            // Interview done – generate and save final summary
             const finalReport = await summarizeOverallFeedback(allAnalyses);
+
+            interviewData.finalReport = finalReport;
+            interviewData.status = 'completed';
+            await interviewData.save();
 
             ws.send(JSON.stringify({
               type: "finalReport",
@@ -65,7 +82,7 @@ export function setupInterviewSocket() {
 
             ws.send(JSON.stringify({
               type: "end",
-              message: "✅ Interview complete. You can now view your feedback."
+              message: "✅ Interview complete. Feedback has been saved."
             }));
 
             ws.close();

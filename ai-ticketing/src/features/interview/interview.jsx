@@ -9,7 +9,7 @@ export const generateInterview = createAsyncThunk(
   'interview/generateInterview',
   async (formData, { rejectWithValue }) => {
     try {
-      const res = await axios.post('http://localhost:3000/interview', formData, {
+      const res = await axios.post(`${import.meta.env.VITE_API_URL}/interview`, formData, {
          
             headers: {
               Authorization: `Bearer ${token}`,
@@ -25,11 +25,28 @@ export const generateInterview = createAsyncThunk(
   }
 );
 
+export const getAllInterviews = createAsyncThunk(
+    'interview/getAllInterviews',
+    async (_, { rejectWithValue }) => {
+        try {
+            const res = await axios.get(`${import.meta.env.VITE_API_URL}/interview`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+            return res.data.interviews;
+        } catch (err) {
+            return rejectWithValue(err.response?.data?.message || 'Failed to fetch interviews');
+        }
+    }
+);
+
 const interviewSlice = createSlice({
   name: 'interview',
   initialState: {
     loading: false,
-    interview: null,        // holds entire interview object
+    interview: null,        // holds single interview object for session
+    interviews: [],         // holds list of all interviews
     interviewId: null,      // for quick access
     error: null,
   },
@@ -55,6 +72,18 @@ const interviewSlice = createSlice({
       .addCase(generateInterview.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+      })
+      .addCase(getAllInterviews.pending, (state) => {
+          state.loading = true;
+          state.error = null;
+      })
+      .addCase(getAllInterviews.fulfilled, (state, action) => {
+          state.loading = false;
+          state.interviews = action.payload;
+      })
+      .addCase(getAllInterviews.rejected, (state, action) => {
+          state.loading = false;
+          state.error = action.payload;
       });
   },
 });
