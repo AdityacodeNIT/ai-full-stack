@@ -33,6 +33,12 @@ export default function Navbar() {
         ) : (
           <>
             <p>Hi, {user?.email}</p>
+            <Link to="/interview" className="btn btn-sm">
+              New Interview
+            </Link>
+            <Link to="/interviews" className="btn btn-sm">
+              Past Interviews
+            </Link>
             {user && user?.role === "admin" ? (
               <Link to="/admin" className="btn btn-sm">
                 Admin

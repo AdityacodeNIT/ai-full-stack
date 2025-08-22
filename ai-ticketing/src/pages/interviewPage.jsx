@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
-import InterviewForm from './interviewIntials';
-import InterviewSession from './interview';
+import InterviewForm from './InterviewForm';
+import InterviewSession from './InterviewSession';
 
 const InterviewPage = () => {
 

@@ -75,7 +75,7 @@ const InterviewSession = ({ interviewId }) => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
 
-      const socket = new WebSocket('ws://localhost:3000/assembly');
+      const socket = new WebSocket(`${import.meta.env.VITE_WS_URL}/assembly`);
       socket.binaryType = 'arraybuffer';
 
       socket.onopen = () => {
@@ -128,7 +128,14 @@ const InterviewSession = ({ interviewId }) => {
   };
 
   useEffect(() => {
-    interviewSocket.current = new WebSocket('ws://localhost:3000/ws/interview');
+    const token = localStorage.getItem('token');
+    if (!token) {
+        setError("Authentication token not found. Please log in again.");
+        return;
+    }
+
+    const wsUrl = `${import.meta.env.VITE_WS_URL}/ws/interview?token=${token}`;
+    interviewSocket.current = new WebSocket(wsUrl);
 
     interviewSocket.current.onopen = () => {
       console.log('✅ Interview WebSocket connected');
