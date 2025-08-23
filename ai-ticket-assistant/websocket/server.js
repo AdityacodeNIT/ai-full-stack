@@ -53,9 +53,11 @@ export function setupInterviewSocket() {
           if (!interviewData) {
             return sendError("Interview not found.", true);
           }
+          console.log(interviewData);
+          console.log(req.user._id)
 
           // Authorize user (req.user is attached by the auth middleware in index.js)
-          if (interviewData.userId.toString() !== req.user.id) {
+          if (interviewData.userId.toString() !== req.user._id) {
             return sendError("Unauthorized access.", true);
           }
 

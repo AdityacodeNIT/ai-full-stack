@@ -1,19 +1,27 @@
-import jwt from "jsonwebtoken"
+import jwt from "jsonwebtoken";
 
-export const authenticate=(req,res,next)=>{
-    const token=req.headers.authorization?.split(" ")[1];
-   
+export const authenticate = (req, res, next) => {
+  let token;
 
-    if(!token){
-        res.status(401).json({message:"access denied no token found"});
-    }
-    
+  // Check Authorization header first
+  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+    token = req.headers.authorization.split(" ")[1];
+  }
+
+  // If no token in header, check cookies
+  if (!token && req.cookies?.token) {
+    token = req.cookies.token;
+  }
+
+  if (!token) {
+    return res.status(401).json({ message: "Access denied: No token found" });
+  }
 
   try {
-     const decodedInfo= jwt.verify(token,process.env.JWT_SECRET);
-     req.user=decodedInfo;
-     next();
+    const decodedInfo = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decodedInfo;
+    next();
   } catch (error) {
-       res.status(401).json({message:"UNAUTHORIZED_USER"});
+    return res.status(401).json({ message: "UNAUTHORIZED_USER" });
   }
-}
+};

@@ -15,11 +15,13 @@ import { inngest } from "./inngest/client.js";
 import { onUserSignup } from "./inngest/function/on-signup.js";
 import { onTicketCreated } from "./inngest/function/on-ticket-create.js";
 
-import { setupInterviewSocket } from "./websocket/server.js";       // returns interviewWSS
-import { createAssemblySocket } from "./websocket/assemblysocket.js";  // returns assemblyWSS
-import { AssemblyAI } from "assemblyai";
+import { setupInterviewSocket } from "./websocket/server.js";        // returns interviewWSS
+import { createAssemblySocket } from "./websocket/assemblysocket.js"; // returns assemblyWSS
+import cookieParser from "cookie-parser";
+// import { AssemblyAI } from "assemblyai"; // ❌ Not used as Express middleware; remove or use where needed
 
 dotenv.config();
+
 const app = express();
 const server = http.createServer(app);
 
@@ -27,55 +29,60 @@ const server = http.createServer(app);
 const interviewWSS = setupInterviewSocket();
 const assemblyWSS = createAssemblySocket();
 
-// Centralized upgrade handler
+/**
+ * CENTRALIZED, SINGLE-CALL UPGRADE HANDLER
+ * - Only ONE handleUpgrade per request
+ * - JWT required only for /ws/interview
+ * - Assembly route is /assembly (add /ws/assembly alias if you like)
+ */
 server.on("upgrade", (req, socket, head) => {
-    const { pathname, query } = parse(req.url, true);
+  const { pathname, query } = parse(req.url, true);
 
-  if (pathname && pathname.startsWith("/ws/interview")) {
-    interviewWSS.handleUpgrade(req, socket, head, (ws) => {
-      interviewWSS.emit("connection", ws, req);
+  // --- Interview route with JWT ---
+  if (pathname === "/ws/interview") {
+    const token = query?.token;
+    if (!token) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+      if (err) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+        console.log("Decoded JWT:", decoded);
+
+      // Attach user for downstream handlers if they read it
+      req.user = decoded;
+
+      interviewWSS.handleUpgrade(req, socket, head, (ws) => {
+        interviewWSS.emit("connection", ws, req);
+      });
     });
-  } else if (pathname && pathname.startsWith("/ws/assembly")) {
+
+    return; // ✅ ensure only one upgrade path runs
+  }
+
+  // --- Assembly route (no auth) ---
+  if (pathname === "/assembly" || pathname === "/ws/assembly") {
     assemblyWSS.handleUpgrade(req, socket, head, (ws) => {
       assemblyWSS.emit("connection", ws, req);
     });
-  } else {
-    socket.destroy();
+    return; // ✅ ensure only one upgrade path runs
   }
-    if (pathname && pathname.startsWith("/ws/interview")) {
-        const token = query.token;
 
-        if (!token) {
-            socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-            socket.destroy();
-            return;
-        }
-
-        jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-            if (err) {
-                socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-                socket.destroy();
-                return;
-            }
-
-            req.user = decoded; // Attach user to the request
-            interviewWSS.handleUpgrade(req, socket, head, (ws) => {
-                interviewWSS.emit("connection", ws, req);
-            });
-        });
-
-    } else if (pathname && pathname.startsWith("/assembly")) {
-        assemblyWSS.handleUpgrade(req, socket, head, (ws) => {
-            assemblyWSS.emit("connection", ws, req);
-        });
-    } else {
-        socket.destroy();
-    }
+  // No matching WS endpoint
+  socket.destroy();
 });
 
 // === EXPRESS SETUP ===
 app.use(cors({ origin: "http://localhost:5173", credentials: true }));
 app.use(express.json());
+app.use(cookieParser())
 
 app.use(
   "/api/inngest",
@@ -84,7 +91,9 @@ app.use(
 app.use("/api/auth", userRoutes);
 app.use("/ticket", TicketRoutes);
 app.use("/interview", interviewRoutes);
-app.use("/",AssemblyAI)
+
+// ❌ DO NOT do: app.use("/", AssemblyAI)
+// If you need AssemblyAI, instantiate and use it in your assembly socket module only.
 
 const PORT = process.env.PORT || 3000;
 
