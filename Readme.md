@@ -1,5 +1,5 @@
 
-```markdown
+
 # 🤖 AI-Powered Interview Assistant 🎤
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -119,8 +119,9 @@ A full-stack application designed to assist in the interview process. This proje
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+
+
 ## 🧑‍💻 Author
 
 *   **Aditya Srivastav**
-```
 
