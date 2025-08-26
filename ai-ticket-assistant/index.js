@@ -18,6 +18,7 @@ import { onTicketCreated } from "./inngest/function/on-ticket-create.js";
 
 import { setupInterviewSocket } from "./websocket/server.js";
 import { createAssemblySocket } from "./websocket/assemblysocket.js";
+import { InterviewHandler } from "./websocket/InterviewHandlers.js";
 
 dotenv.config();
 
@@ -33,13 +34,25 @@ const activeInterviews = new Map(); // userId -> ws
 // Track active interview connections
 interviewWSS.on("connection", (ws, req) => {
   if (req.user?._id) {
-    activeInterviews.set(req.user._id, ws);
+        const handler = new InterviewHandler(req.user._id, ws, req);
+    activeInterviews.set(req.user._id,{ws,handler} );
+
+      req.onResponseFromAssembly = (responseText) => {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({
+          type: "response",
+          response: responseText
+        }));
+      }
+    };
     ws.on("close", () => activeInterviews.delete(req.user._id));
   }
 });
 
-// Pass function to Assembly socket to get interviewWS by userId
-const assemblyWSS = createAssemblySocket((userId) => activeInterviews.get(userId));
+const assemblyWSS = createAssemblySocket((userId) => {
+  const record = activeInterviews.get(userId);
+  return record ? { ws: record.ws, handler: record.handler } : null;
+});
 
 // ------------------------------
 // JWT helper
@@ -85,13 +98,32 @@ server.on("upgrade", async (req, socket, head) => {
   }
 
   // Assembly WS (needs userId query param)
-  if (pathname === "/assembly" || pathname === "/ws/assembly") {
-    const userId = query?.userId;
-    assemblyWSS.handleUpgrade(req, socket, head, (ws) => {
-      assemblyWSS.emit("connection", ws, req, userId);
-    });
+if (pathname === "/assembly" || pathname === "/ws/assembly") {
+  // extract token from query or cookies
+  const token = query?.token || (req.headers.cookie && cookie.parse(req.headers.cookie).token);
+  if (!token) {
+    socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+    socket.destroy();
     return;
   }
+
+  try {
+    const decoded = await verifyJWT(token, process.env.JWT_SECRET);
+    req.user = decoded; 
+    const userId = decoded._id;
+    // ✅ attach user to req
+
+    assemblyWSS.handleUpgrade(req, socket, head, (ws) => {
+      assemblyWSS.emit("connection", ws, req);
+    });
+  } catch (err) {
+    console.error("JWT verification failed:", err);
+    socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+    socket.destroy();
+  }
+  return;
+}
+
 
   socket.destroy();
 });

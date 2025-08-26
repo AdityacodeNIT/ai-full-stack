@@ -19,54 +19,85 @@ const InterviewSession = ({ interviewId }) => {
   const mediaSource = useRef(null);
   const mediaStream = useRef(null);
   const partial = useRef('');
+  const isTranscribingRef = useRef(false);
+
+  useEffect(() => {
+    isTranscribingRef.current = isTranscribing;
+  }, [isTranscribing]);
 
   const questionQueue = useRef([]);
   const processedQuestions = useRef(new Set());
+
+  // --- Send message to AssemblyAI ---
+  const sendAssemblyMsg = (msg) => {
+    const socket = assemblyWS.current;
+    if (!socket) return;
+
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(msg));
+    } else if (socket.readyState === WebSocket.CONNECTING) {
+      socket.addEventListener(
+        'open',
+        () => socket.send(JSON.stringify(msg)),
+        { once: true }
+      );
+    }
+  };
 
   // --- TTS function ---
   const speak = useCallback(
     (text) =>
       new Promise((res) => {
-            assemblyWS.current?.send(JSON.stringify({ type: "tts_start" }));
         if (!text) return res();
+
+        sendAssemblyMsg({ type: 'tts_start' });
+
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'en-US';
         utterance.rate = 0.9;
         utterance.pitch = 1;
-          utterance.onend = () => {
-        // 🟢 tell backend TTS ended
-        assemblyWS.current?.send(JSON.stringify({ type: "tts_end" }));
-        res();
-      };
-        utterance.onerror = res;
+
+        utterance.onend = () => {
+          sendAssemblyMsg({ type: 'tts_end' });
+          res();
+        };
+
+        utterance.onerror = () => {
+          sendAssemblyMsg({ type: 'tts_end' });
+          res();
+        };
+
+        speechSynthesis.cancel();
         speechSynthesis.speak(utterance);
       }),
     []
   );
 
   // --- Stop transcription ---
-const stopTranscription = useCallback(() => {
-  if (!isTranscribing) return;
-  setIsTranscribing(false);
+  const stopTranscription = useCallback(() => {
+    if (!isTranscribing) return;
 
-  workletNode.current?.port.postMessage({ command: 'stop' });
-  workletNode.current?.disconnect();
-  workletNode.current = null;
+    setIsTranscribing(false);
 
-  mediaSource.current?.disconnect();
-  mediaStream.current?.getTracks().forEach((t) => t.stop());
-  mediaStream.current = null;
+    workletNode.current?.port.postMessage({ command: 'stop' });
+    workletNode.current?.disconnect();
+    workletNode.current = null;
 
-  audioCtx.current?.close().catch(() => {});
-  audioCtx.current = null;
+    mediaSource.current?.disconnect();
+    mediaStream.current?.getTracks().forEach((t) => t.stop());
+    mediaStream.current = null;
 
-  if (assemblyWS.current?.readyState === 1) assemblyWS.current.close();
-  assemblyWS.current = null;
+    audioCtx.current?.close().catch(() => {});
+    audioCtx.current = null;
+
+    if (assemblyWS.current?.readyState === 1) assemblyWS.current.close();
+    assemblyWS.current = null;
+
     setStatus('disconnected');
 
+    // 👇 NEW: continue if more questions waiting
 
-}, [isTranscribing]);
-
+  }, [isTranscribing]); // ✅ removed processNextQuestion from deps to avoid recursion
 
   // --- Start transcription ---
   const startTranscription = useCallback(async () => {
@@ -84,15 +115,17 @@ const stopTranscription = useCallback(() => {
       if (ctx.state === 'suspended') await ctx.resume();
 
       await ctx.audioWorklet.addModule('/audio-processor.js');
-      const node = new AudioWorkletNode(ctx, 'audio-processor', { processorOptions: { sampleRate: 16000 } });
+      const node = new AudioWorkletNode(ctx, 'audio-processor', {
+        processorOptions: { sampleRate: 16000 },
+      });
       workletNode.current = node;
 
       const src = ctx.createMediaStreamSource(stream);
       mediaSource.current = src;
       src.connect(node);
 
-      // --- Connect to AssemblyAI WS ---
-      const socket = new WebSocket(`${import.meta.env.VITE_WS_URL}/assembly`);
+      const token = localStorage.getItem('token');
+      const socket = new WebSocket(`${import.meta.env.VITE_WS_URL}/assembly?token=${token}`);
       assemblyWS.current = socket;
       socket.binaryType = 'arraybuffer';
 
@@ -112,21 +145,18 @@ const stopTranscription = useCallback(() => {
         };
       };
 
-   socket.onmessage = (e) => {
-  const d = JSON.parse(e.data);
-  if (d.text) {
-    if (d.isFinal) {
-      partial.current += ` ${d.text}`;
-      setTranscript(partial.current.trim());
-
-      // ✅ stop recording properly
-      stopTranscription();
-    } else {
-      setTranscript((partial.current + ` ${d.text}`).trim());
-    }
-  }
-};
-
+      socket.onmessage = (e) => {
+        const d = JSON.parse(e.data);
+        if (d.text) {
+          if (d.isFinal) {
+            partial.current += ` ${d.text}`;
+            setTranscript(partial.current.trim());
+                stopTranscription();
+          } else {
+            setTranscript((partial.current + ` ${d.text}`).trim());
+          }
+        }
+      };
 
       socket.onerror = () => {
         setError('Transcription error');
@@ -140,9 +170,9 @@ const stopTranscription = useCallback(() => {
     }
   }, [isTranscribing, stopTranscription]);
 
-  // --- Process next question ---
-  const processQuestionQueue = useCallback(async () => {
-    if (isTranscribing || questionQueue.current.length === 0) return;
+  // --- Process next question in queue ---
+  const processNextQuestion = useCallback(async () => {
+    if (isTranscribing||questionQueue.current.length === 0) return;
 
     const { q, idx, tot } = questionQueue.current.shift();
 
@@ -153,27 +183,35 @@ const stopTranscription = useCallback(() => {
     setTranscript('');
     partial.current = '';
 
-    await speak(q);
     await startTranscription();
-
-    const checkNext = setInterval(() => {
+    await speak(q);
+      const checkNext = setInterval(() => {
       if (!isTranscribing && questionQueue.current.length > 0) {
         clearInterval(checkNext);
-        processQuestionQueue();
+        processNextQuestion();
       }
-    }, 500);
-  }, [isTranscribing, speak, startTranscription]);
+    }, 1500);
+    
+  }, [startTranscription, speak]);
 
-  const handleQuestion = useCallback((q, idx, tot) => {
-    if (processedQuestions.current.has(idx)) return;
-    processedQuestions.current.add(idx);
-    questionQueue.current.push({ q, idx, tot });
-    processQuestionQueue();
-  }, [processQuestionQueue]);
+  // --- Handle new question ---
+  const handleQuestion = useCallback(
+    (q, idx, tot) => {
+      if (processedQuestions.current.has(idx)) return;
+      processedQuestions.current.add(idx);
+      questionQueue.current.push({ q, idx, tot });
 
-  // --- Interview WS setup ---
+      if (!isTranscribingRef.current) {
+        processNextQuestion();
+      }
+    },
+    [processNextQuestion]
+  );
+
+  // --- Interview WebSocket setup ---
   useEffect(() => {
-      if (interviewWS.current) return; 
+    if (interviewWS.current) return;
+
     const token = localStorage.getItem('token');
     if (!token) return setError('Token missing');
 
@@ -189,9 +227,12 @@ const stopTranscription = useCallback(() => {
       const msg = JSON.parse(data);
       switch (msg.type) {
         case 'question':
+          console.log('New question:', msg);
           handleQuestion(msg.question, msg.questionIndex, msg.totalQuestions);
+          // ❌ removed redundant processNextQuestion here
           break;
         case 'analysis':
+          console.log('Analysis:', msg);
           setAnalysis(msg.analysis);
           break;
         case 'finalReport':
@@ -215,17 +256,21 @@ const stopTranscription = useCallback(() => {
 
     return () => {
       stopTranscription();
-
     };
   }, [interviewId, handleQuestion, stopTranscription]);
 
   return (
     <div className="p-6 bg-gray-900 text-white rounded max-w-xl mx-auto">
       <div className="flex items-center mb-4">
-        <div className={`w-3 h-3 mr-2 rounded-full ${
-          status === 'connected' ? 'bg-green-500' :
-          status === 'error' ? 'bg-red-500' : 'bg-gray-500'
-        }`} />
+        <div
+          className={`w-3 h-3 mr-2 rounded-full ${
+            status === 'connected'
+              ? 'bg-green-500'
+              : status === 'error'
+              ? 'bg-red-500'
+              : 'bg-gray-500'
+          }`}
+        />
         <span className="text-sm">{status}</span>
       </div>
 
@@ -236,19 +281,32 @@ const stopTranscription = useCallback(() => {
       ) : (
         <>
           <div className="bg-gray-800 p-4 rounded mb-4">
-            <p className="font-semibold">🧠 Q {qIndex + 1}/{total}: {question || 'Waiting…'}</p>
+            <p className="font-semibold">
+              🧠 Q {qIndex + 1}/{total}: {question || 'Waiting…'}
+            </p>
           </div>
 
           <div className="flex items-center mb-4">
-            <div className={`w-4 h-4 rounded-full ${isTranscribing ? 'bg-red-500 animate-pulse' : 'bg-gray-600'}`} />
+            <div
+              className={`w-4 h-4 rounded-full ${
+                isTranscribing ? 'bg-red-500 animate-pulse' : 'bg-gray-600'
+              }`}
+            />
             <span className="ml-2 text-sm">{isTranscribing ? 'Listening…' : 'Not listening'}</span>
           </div>
 
           {isTranscribing && (
-            <button onClick={stopTranscription} className="bg-red-600 py-2 px-4 rounded mb-4">⏹ Stop</button>
+            <button
+              onClick={stopTranscription}
+              className="bg-red-600 py-2 px-4 rounded mb-4"
+            >
+              ⏹ Stop
+            </button>
           )}
 
-          {transcript && <p className="italic bg-gray-800 p-3 rounded">You: {transcript}</p>}
+          {transcript && (
+            <p className="italic bg-gray-800 p-3 rounded">You: {transcript}</p>
+          )}
         </>
       )}
 
