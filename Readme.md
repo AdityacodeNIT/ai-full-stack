@@ -1,4 +1,4 @@
-```markdown
+
 ```markdown
 # 🤖 AI-Powered Interview Assistant 🎤
 
@@ -124,4 +124,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 *   **Aditya Srivastav**
 ```
 
-```
