@@ -38,13 +38,22 @@ export const createTicket = async (req, res) => {
 export const getTickets = async (req, res) => {
   try {
     const user = req.user;
+    const { status } = req.query; // Get status from query parameters
+    console.log(user);
     let tickets = [];
+    const filter = {};
+
+    if (status) {
+      filter.status = status;
+    }
+
     if (user.role !== "user") {
-      tickets = await Ticket.find({})
+      tickets = await Ticket.find(filter)
         .populate("assignedTo", ["email", "_id"])
         .sort({ createdAt: -1 });
     } else {
-      tickets = await Ticket.find({ createdBy: user._id })
+      filter.createdBy = user._id;
+      tickets = await Ticket.find(filter)
         .select("title description status createdAt")
         .sort({ createdAt: -1 });
     }
@@ -78,6 +87,35 @@ export const getTicket = async (req, res) => {
     return res.status(200).json({ ticket });
   } catch (error) {
     console.error("Error fetching ticket", error.message);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const updateTicketStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ message: "Status is required" });
+    }
+
+    const ticket = await Ticket.findById(id);
+
+    if (!ticket) {
+      return res.status(404).json({ message: "Ticket not found" });
+    }
+
+    // Only allow specific status updates, e.g., to 'succeeded'
+    if (status === "succeeded") {
+      ticket.status = status;
+      await ticket.save();
+      return res.status(200).json({ message: "Ticket status updated successfully", ticket });
+    } else {
+      return res.status(400).json({ message: "Invalid status update" });
+    }
+  } catch (error) {
+    console.error("Error updating ticket status", error.message);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 };

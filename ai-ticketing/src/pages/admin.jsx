@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 
 export default function AdminPanel() {
   const [users, setUsers] = useState([]);
@@ -17,10 +18,10 @@ export default function AdminPanel() {
   const fetchUsers = async () => {
     console.log("📡 fetchUsers() called");
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_SERVER_URL}/api/auth/getusers`,
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/auth/getusers`,
         {
-          method: "GET",
+         
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -28,9 +29,9 @@ export default function AdminPanel() {
       );
       console.log("🧾 Response received:", res);
 
-      const data = await res.json();
+      const data = await res.data;
       console.log(data);
-      if (res.ok) {
+      if (res.status === 200) {
         setUsers(data);
         setFilteredUsers(data);
       } else {
@@ -52,7 +53,7 @@ export default function AdminPanel() {
   const handleUpdate = async () => {
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_SERVER_URL}/api/auth/updateUser`,
+        `${import.meta.env.VITE_API_URL}/api/auth/updateUser`,
         {
           method: "POST",
           headers: {

@@ -1,12 +1,8 @@
-import React from 'react'
- import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 
 function Ticket() {
-
-
-
   const { id } = useParams();
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -17,7 +13,7 @@ function Ticket() {
     const fetchTicket = async () => {
       try {
         const res = await fetch(
-          `${import.meta.env.VITE_SERVER_URL}/ticket/${id}`,
+          `${import.meta.env.VITE_API_URL}/ticket/${id}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -25,7 +21,7 @@ function Ticket() {
           }
         );
         const data = await res.json();
-        console.log(data)
+        console.log(data);
         if (res.ok) {
           setTicket(data.ticket);
         } else {
@@ -43,41 +39,61 @@ function Ticket() {
   }, [id]);
 
   if (loading)
-    return <div className="text-center mt-10">Loading ticket details...</div>;
-  if (!ticket) return <div className="text-center mt-10">Ticket not found</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <span className="loading loading-spinner loading-lg text-primary"></span>
+        <p className="ml-4 text-lg text-base-content">Loading ticket details...</p>
+      </div>
+    );
+  if (!ticket)
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <p className="text-xl text-error">Ticket not found</p>
+      </div>
+    );
 
   return (
-    <div className="max-w-3xl mx-auto p-4">
-      <h2 className="text-2xl font-bold mb-4">Ticket Details</h2>
+    <div className="max-w-4xl mx-auto p-4 md:p-8">
+      <h2 className="text-3xl font-extrabold mb-6 text-center md:text-left text-base-content">
+        Ticket Details
+      </h2>
 
-      <div className="card bg-gray-800 shadow p-4 space-y-4 text-white">
-        <h3 className="text-xl font-semibold">{ticket.title}</h3>
-        <p>{ticket.description}</p>
+      <div className="card bg-base-200 shadow-xl rounded-lg p-6 space-y-4 text-base-content fade-in">
+        <h3 className="text-2xl font-bold text-primary">{ticket.title}</h3>
+        <p className="text-lg">{ticket.description}</p>
 
         {/* Conditionally render extended details */}
         {ticket.status && (
           <>
-            <div className="divider">Metadata</div>
-            <p>
-              <strong>Status:</strong> {ticket.status}
-            </p>
-            {ticket.priority && (
+            <div className="divider my-4">Metadata</div>
+            <div className="flex flex-wrap items-center gap-2">
               <p>
-                <strong>Priority:</strong> {ticket.priority}
+                <strong>Status:</strong>{" "}
+                <span className="badge badge-lg badge-info">{ticket.status}</span>
               </p>
-            )}
+              {ticket.priority && (
+                <p>
+                  <strong>Priority:</strong>{" "}
+                  <span className="badge badge-lg badge-warning">{ticket.priority}</span>
+                </p>
+              )}
+            </div>
 
             {ticket.relatedSkills?.length > 0 && (
-              <p>
+              <div className="flex flex-wrap items-center gap-2">
                 <strong>Related Skills:</strong>{" "}
-                {ticket.relatedSkills.join(", ")}
-              </p>
+                {ticket.relatedSkills.map((skill, index) => (
+                  <span key={index} className="badge badge-outline">
+                    {skill}
+                  </span>
+                ))}
+              </div>
             )}
 
             {ticket.helpfulNotes && (
               <div>
                 <strong>Helpful Notes:</strong>
-                <div className="prose max-w-none rounded mt-2">
+                <div className="prose max-w-none rounded-md p-4 bg-base-100 mt-2">
                   <ReactMarkdown>{ticket.helpfulNotes}</ReactMarkdown>
                 </div>
               </div>
@@ -94,12 +110,55 @@ function Ticket() {
                 Created At: {new Date(ticket.createdAt).toLocaleString()}
               </p>
             )}
+            {ticket.status !== "succeeded" && (
+              <div className="mt-6 text-right">
+                <button
+                  className="btn btn-success"
+                  onClick={handleMarkAsSucceeded}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <span className="loading loading-spinner"></span>
+                  ) : (
+                    "Mark as Succeeded"
+                  )}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
     </div>
   );
-}
 
+  async function handleMarkAsSucceeded() {
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/ticket/${id}/status`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: "succeeded" }),
+        }
+      );
+      const data = await res.json();
+      if (res.ok) {
+        setTicket(data.ticket);
+        alert("Ticket marked as succeeded!");
+      } else {
+        alert(data.message || "Failed to update ticket status");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong while updating status");
+    } finally {
+      setLoading(false);
+    }
+  }
+}
 
 export default Ticket

@@ -1,15 +1,14 @@
 import express from "express"
-import { getTicket,getTickets,createTicket } from "../controllers/ticket.js";
+
+import { getTicket, getTickets, createTicket, updateTicketStatus } from "../controllers/ticket.js";
 import { authenticate } from "../middleware/auth.js";
 
-const router=express.Router();
+const router = express.Router();
 
-router.post("/",authenticate,createTicket)
+router.post("/", authenticate, createTicket);
 
-// router.post("/login",login);
-// router.post("/logout",logout);
-// router.post("/updateUser",authenticate,updateUser);
-router.get("/",authenticate,getTickets);
-router.get("/:id",authenticate,getTicket)
+router.get("/", authenticate, getTickets);
+router.get("/:id", authenticate, getTicket);
+router.put("/:id/status", authenticate, updateTicketStatus); // New route for updating ticket status
 
 export default router;

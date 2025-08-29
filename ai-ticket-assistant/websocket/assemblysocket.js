@@ -23,24 +23,43 @@ class AssemblySocketHandler {
     this.pendingTranscript = null;
     this.lastTranscript = ""; // full accumulated transcript
     this.previousTurnTranscript = ""; // last turn text
+    this.hasSubmittedForCurrentQuestion = false; // Track if response was already sent
   }
 
   async initializeTranscriber() {
     if (this.isConnecting || this.isConnected) await this.close();
     this.isConnecting = true;
     this._everConnected = false;
+    this.hasSubmittedForCurrentQuestion = false; // Reset on new transcription
 
     this.connectionPromise = new Promise(async (resolve, reject) => {
       try {
-        this.transcriber = this.client.streaming.transcriber({ sampleRate: 16000, formatTurns: true });
+        this.transcriber = this.client.streaming.transcriber({ 
+          sampleRate: 16000, 
+          formatTurns: true,
+          endUtteranceSilenceThreshold: 2000 // Increase silence threshold
+        });
 
         this.transcriber.on("open", () => {
           this._everConnected = true;
           this.isConnecting = false;
           this.isConnected = true;
           this.reconnectAttempts = 0;
+          this.lastTranscript = ""; // Reset transcript for new question
+          this.previousTurnTranscript = "";
           this.flushAudioBuffer();
           resolve();
+        });
+
+        this.transcriber.on("partial", (partial) => {
+          // Send partial transcripts to frontend for live display
+          if (this.ws?.readyState === 1) {
+            this.ws.send(JSON.stringify({
+              type: "transcript",
+              text: partial.text,
+              isFinal: false
+            }));
+          }
         });
 
         this.transcriber.on("turn", (turn) => {
@@ -48,6 +67,7 @@ class AssemblySocketHandler {
         });
 
         this.transcriber.on("error", (err) => {
+          console.error("AssemblyAI error:", err);
           this.isConnecting = false;
           this.isConnected = false;
           reject(err);
@@ -76,6 +96,10 @@ class AssemblySocketHandler {
 
   sendAudio(data) {
     if (!data?.byteLength) return;
+    
+    // Don't send audio if TTS is playing
+    if (this.isTTSPlaying) return;
+    
     if (this.isConnected && this.transcriber) {
       try {
         const buffer = data instanceof ArrayBuffer ? data : new Uint8Array(data).buffer;
@@ -90,7 +114,7 @@ class AssemblySocketHandler {
   }
 
   flushAudioBuffer() {
-    if (this.audioBuffer.length && this.isConnected) {
+    if (this.audioBuffer.length && this.isConnected && !this.isTTSPlaying) {
       const chunks = [...this.audioBuffer];
       this.audioBuffer = [];
       chunks.forEach((chunk) => this.sendAudio(chunk));
@@ -101,26 +125,8 @@ class AssemblySocketHandler {
     this.isConnecting = this.isConnected = false;
     this.reconnectAttempts = 0;
 
-    // Send final transcript
-    if (this.lastTranscript) {
-      if (this.interviewWS?.readyState === 1) {
-        this.interviewWS.send(JSON.stringify({
-          type: "response",
-          response: this.lastTranscript.trim()
-        }));
-
-      }
-
-      if (this.interviewHandler) {
-        this.interviewHandler.handleResponse({
-          type: "response",
-          response: this.lastTranscript.trim()
-        }).catch(console.error);
-        console.log("✅ Forwarded final transcript to backend handler");
-      }
-    } else if (this.isTTSPlaying) {
-      this.pendingTranscript = this.lastTranscript;
-    }
+    // DON'T automatically send transcript on close
+    // Let the frontend control when to submit
 
     if (this.transcriber && this._everConnected) {
       try { this.transcriber._ws?.removeAllListeners("error"); } catch {}
@@ -130,23 +136,28 @@ class AssemblySocketHandler {
     this.transcriber = null;
     this.connectionPromise = null;
     this.audioBuffer = [];
+    this.lastTranscript = "";
+    this.previousTurnTranscript = "";
+    this.hasSubmittedForCurrentQuestion = false;
   }
 
   setTTSPlaying(isPlaying) {
     this.isTTSPlaying = isPlaying;
-    if (!isPlaying && this.pendingTranscript) {
-      if (this.interviewWS?.readyState === 1) {
-        this.interviewWS.send(JSON.stringify({
-          type: "response",
-          response: this.pendingTranscript.trim()
-        }));
-
-      }
-      this.pendingTranscript = null;
+    
+    if (isPlaying) {
+      // Clear any pending audio when TTS starts
+      this.audioBuffer = [];
+      // Reset transcript when new question starts
+      this.lastTranscript = "";
+      this.previousTurnTranscript = "";
+      this.hasSubmittedForCurrentQuestion = false;
     }
   }
 
   onTranscriptReceived(turn) {
+    // Only process if TTS is not playing
+    if (this.isTTSPlaying) return;
+
     let newText = turn.transcript;
 
     // Remove overlap from previous turn
@@ -154,39 +165,24 @@ class AssemblySocketHandler {
       newText = newText.slice(this.previousTurnTranscript.length).trim();
     }
 
-    if (newText) this.lastTranscript += " " + newText;
+    if (newText) {
+      this.lastTranscript += " " + newText;
+      this.lastTranscript = this.lastTranscript.trim();
+    }
+    
     this.previousTurnTranscript = turn.transcript;
 
-    // --- LIVE TRANSCRIPT ---
+    // Send live transcript to frontend
     if (this.ws?.readyState === 1) {
       this.ws.send(JSON.stringify({
         type: "transcript",
-        text: newText,
+        text: this.lastTranscript,
         isFinal: false
       }));
     }
 
-    // --- FINAL TRANSCRIPT AT TURN END ---
-    if (turn.end_of_turn) {
-      if (!this.isTTSPlaying) {
-        if (this.interviewWS?.readyState === 1) {
-          this.interviewWS.send(JSON.stringify({
-            type: "response",
-            response: this.lastTranscript.trim()
-          }));
-        }
-
-       const handler = getHandler(this.userId);
-if (handler) {
-   handler.handleResponse({
-    type: "response",
-    response: this.lastTranscript.trim()
-  }).catch(console.error);
-        }
-      } else {
-        this.pendingTranscript = this.lastTranscript;
-      }
-    }
+    // DON'T automatically submit on turn end
+    // The frontend will control submission via the close() method
   }
 }
 
@@ -200,7 +196,7 @@ export const createAssemblySocket = (getInterviewWS) => {
 
   wss.on("connection", (ws, req) => {
     const userId = req.user._id;
-    const interviewRecord = getInterviewWS(userId); // returns { ws, handler }
+    const interviewRecord = getInterviewWS(userId);
 
     if (!interviewRecord) {
       console.error("No active interview found for user", userId);
@@ -209,8 +205,6 @@ export const createAssemblySocket = (getInterviewWS) => {
     }
 
     const { ws: interviewWS, handler: interviewHandler } = interviewRecord;
-
-
 
     // Pass both frontend WS and backend handler
     const handler = new AssemblySocketHandler(userId, interviewWS, interviewHandler);
@@ -232,10 +226,15 @@ export const createAssemblySocket = (getInterviewWS) => {
     ws.on("message", (msg) => {
       try {
         const parsed = JSON.parse(msg.toString());
-        if (parsed.type === "tts_start") handler.setTTSPlaying(true);
-        else if (parsed.type === "tts_end") handler.setTTSPlaying(false);
-        else if (parsed.audioData) handler.sendAudio(parsed.audioData);
+        if (parsed.type === "tts_start") {
+          handler.setTTSPlaying(true);
+        } else if (parsed.type === "tts_end") {
+          handler.setTTSPlaying(false);
+        } else if (parsed.audioData) {
+          handler.sendAudio(parsed.audioData);
+        }
       } catch {
+        // Assume it's raw audio data
         handler.sendAudio(msg);
       }
     });

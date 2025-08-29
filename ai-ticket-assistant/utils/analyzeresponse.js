@@ -3,8 +3,6 @@ import { google } from '@ai-sdk/google';
 import { generateText } from 'ai';
 
 export const analyzeResponse = async (responseText, question) => {
-  console.log("📨 Analyzing response:", responseText.substring(0, 100) + "...");
-  
   if (!responseText || responseText.trim().length === 0) {
     throw new Error('Response text is empty');
   }
@@ -46,11 +44,21 @@ Respond in valid JSON format:
       temperature: 0.3
     });
 
-    // Clean and parse response
-    const cleanText = text
-      .replace(/```json?/g, '')
-      .replace(/\n?```/g, '')
-      .trim();
+    // More robust JSON cleaning
+    let cleanText = text.trim();
+    
+    // Remove code block markers
+    cleanText = cleanText.replace(/^```json?\s*/, '').replace(/\s*```$/, '');
+    
+    // Find JSON boundaries
+    const jsonStart = cleanText.indexOf('{');
+    const jsonEnd = cleanText.lastIndexOf('}');
+    
+    if (jsonStart === -1 || jsonEnd === -1 || jsonStart >= jsonEnd) {
+      throw new Error('No valid JSON found in response');
+    }
+    
+    cleanText = cleanText.substring(jsonStart, jsonEnd + 1);
 
     const analysis = JSON.parse(cleanText);
     
@@ -86,21 +94,21 @@ export const summarizeOverallFeedback = async (allAnalyses) => {
     throw new Error('No analyses provided for summarization');
   }
 
+  // Create structured data for the prompt
+  const interviewData = allAnalyses.map((item, index) => ({
+    questionNumber: index + 1,
+    question: item.question,
+    response: item.response,
+    analysis: item.analysis
+  }));
+
   const summaryPrompt = `
 You are analyzing complete interview data to create a comprehensive final report.
 
 Interview Data:
-${JSON.stringify(allAnalyses, null, 2)}
+${JSON.stringify(interviewData, null, 2)}
 
-Generate a detailed final interview assessment with:
-
-1. Per-question breakdown with candidate responses and feedback
-2. Overall ratings across all dimensions (High/Medium/Low)
-3. Final recommendation (2-3 sentences)
-4. Proficiency level assessment (Beginner/Intermediate/Advanced)
-5. Ideal answer examples for improvement
-
-Return in this exact JSON format:
+Generate a detailed final interview assessment. Return ONLY valid JSON with this exact structure:
 {
   "perQuestion": [
     {
@@ -129,16 +137,34 @@ Return in this exact JSON format:
       model: google('gemini-1.5-flash'),
       prompt: summaryPrompt,
       apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-      maxTokens: 1000,
+      maxTokens: 1500,
       temperature: 0.2
     });
 
     console.log("Raw AI response:", text);
 
-    const cleanText = text
-      .replace(/```json?/g, '')
-      .replace(/\n?```/g, '')
-      .trim();
+    // More robust JSON extraction
+    let cleanText = text.trim();
+    
+    // Remove code block markers
+    cleanText = cleanText.replace(/^```json?\s*/, '').replace(/\s*```$/, '');
+    
+    // Find JSON boundaries
+    const jsonStart = cleanText.indexOf('{');
+    const jsonEnd = cleanText.lastIndexOf('}');
+    
+    if (jsonStart === -1 || jsonEnd === -1 || jsonStart >= jsonEnd) {
+      throw new Error('No valid JSON found in response');
+    }
+    
+    cleanText = cleanText.substring(jsonStart, jsonEnd + 1);
+    
+    // Additional cleanup for common JSON issues
+    cleanText = cleanText
+      .replace(/,\s*}/g, '}')  // Remove trailing commas
+      .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
+      .replace(/\n/g, ' ')     // Replace newlines with spaces
+      .replace(/\s+/g, ' ');   // Normalize whitespace
 
     const report = JSON.parse(cleanText);
     
@@ -147,16 +173,25 @@ Return in this exact JSON format:
       throw new Error('Invalid report structure generated');
     }
 
+    // Ensure perQuestion matches the number of analyses
+    if (report.perQuestion.length !== allAnalyses.length) {
+      console.warn('Mismatch between perQuestion length and analyses length');
+    }
+
     return report;
 
   } catch (error) {
     console.error('Error generating final report:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack
+    });
     
-    // Generate fallback report
+    // Generate fallback report with actual data
     const fallbackReport = {
       perQuestion: allAnalyses.map((analysis, index) => ({
-        question: analysis.question,
-        yourResponse: analysis.response,
+        question: analysis.question || `Question ${index + 1}`,
+        yourResponse: analysis.response || 'Response unavailable',
         summary: analysis.analysis?.summary || 'Analysis unavailable',
         idealAnswer: 'Please review industry best practices for this type of question'
       })),
@@ -166,7 +201,8 @@ Return in this exact JSON format:
         leadership: 'Medium', 
         technicalUnderstanding: 'Medium'
       },
-      averageScore: 70,
+      averageScore: allAnalyses.length > 0 ? 
+        Math.round(allAnalyses.reduce((sum, a) => sum + (a.analysis?.score || 70), 0) / allAnalyses.length) : 70,
       recommendation: 'Unable to generate detailed recommendation due to analysis error. Manual review recommended.',
       proficiencyLevel: 'Intermediate',
       keyStrengths: ['Completed the interview'],

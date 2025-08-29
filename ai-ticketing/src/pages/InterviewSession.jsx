@@ -11,6 +11,12 @@ const InterviewSession = ({ interviewId }) => {
   const [status, setStatus] = useState('disconnected');
   const [qIndex, setQIndex] = useState(0);
   const [total, setTotal] = useState(0);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isProcessingResponse, setIsProcessingResponse] = useState(false);
+  
+  // NEW: Store all question analyses
+  const [questionAnalyses, setQuestionAnalyses] = useState([]);
+  const [showPreviousAnalyses, setShowPreviousAnalyses] = useState(false);
 
   const interviewWS = useRef(null);
   const assemblyWS = useRef(null);
@@ -20,6 +26,7 @@ const InterviewSession = ({ interviewId }) => {
   const mediaStream = useRef(null);
   const partial = useRef('');
   const isTranscribingRef = useRef(false);
+  const hasSubmittedResponse = useRef(false);
 
   useEffect(() => {
     isTranscribingRef.current = isTranscribing;
@@ -47,9 +54,10 @@ const InterviewSession = ({ interviewId }) => {
   // --- TTS function ---
   const speak = useCallback(
     (text) =>
-      new Promise((res) => {
-        if (!text) return res();
+      new Promise((resolve) => {
+        if (!text) return resolve();
 
+        setIsSpeaking(true);
         sendAssemblyMsg({ type: 'tts_start' });
 
         const utterance = new SpeechSynthesisUtterance(text);
@@ -59,12 +67,14 @@ const InterviewSession = ({ interviewId }) => {
 
         utterance.onend = () => {
           sendAssemblyMsg({ type: 'tts_end' });
-          res();
+          setIsSpeaking(false);
+          setTimeout(() => resolve(), 500);
         };
 
         utterance.onerror = () => {
           sendAssemblyMsg({ type: 'tts_end' });
-          res();
+          setIsSpeaking(false);
+          resolve();
         };
 
         speechSynthesis.cancel();
@@ -73,11 +83,31 @@ const InterviewSession = ({ interviewId }) => {
     []
   );
 
+  // --- Submit response to backend ---
+  const submitResponse = useCallback(() => {
+    const currentTranscript = partial.current.trim();
+    
+    if (currentTranscript.length > 5 && !hasSubmittedResponse.current && interviewWS.current?.readyState === 1) {
+      hasSubmittedResponse.current = true;
+      setIsProcessingResponse(true);
+      
+      console.log('Submitting response:', currentTranscript);
+      interviewWS.current.send(JSON.stringify({
+        type: 'response',
+        response: currentTranscript
+      }));
+    }
+  }, []);
+
   // --- Stop transcription ---
-  const stopTranscription = useCallback(() => {
+  const stopTranscription = useCallback((shouldSubmit = true) => {
     if (!isTranscribing) return;
 
     setIsTranscribing(false);
+
+    if (shouldSubmit && !hasSubmittedResponse.current) {
+      submitResponse();
+    }
 
     workletNode.current?.port.postMessage({ command: 'stop' });
     workletNode.current?.disconnect();
@@ -94,16 +124,16 @@ const InterviewSession = ({ interviewId }) => {
     assemblyWS.current = null;
 
     setStatus('disconnected');
-
-    // 👇 NEW: continue if more questions waiting
-
-  }, [isTranscribing]); // ✅ removed processNextQuestion from deps to avoid recursion
+  }, [isTranscribing, submitResponse]);
 
   // --- Start transcription ---
   const startTranscription = useCallback(async () => {
-    if (isTranscribing) return;
+    if (isTranscribing || isSpeaking) return;
+    
     setError(null);
     partial.current = '';
+    setTranscript('');
+    hasSubmittedResponse.current = false;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -131,7 +161,7 @@ const InterviewSession = ({ interviewId }) => {
 
       const timeout = setTimeout(() => {
         setError('AssemblyAI connection timeout');
-        stopTranscription();
+        stopTranscription(false);
       }, 10000);
 
       socket.onopen = () => {
@@ -147,32 +177,28 @@ const InterviewSession = ({ interviewId }) => {
 
       socket.onmessage = (e) => {
         const d = JSON.parse(e.data);
-        if (d.text) {
-          if (d.isFinal) {
-            partial.current += ` ${d.text}`;
-            setTranscript(partial.current.trim());
-                stopTranscription();
-          } else {
-            setTranscript((partial.current + ` ${d.text}`).trim());
-          }
+        
+        if (d.text && d.text !== partial.current) {
+          partial.current = d.text;
+          setTranscript(d.text);
         }
       };
 
       socket.onerror = () => {
         setError('Transcription error');
-        stopTranscription();
+        stopTranscription(false);
       };
 
       socket.onclose = () => setStatus('disconnected');
     } catch (err) {
       setError(`Audio setup failed: ${err.message}`);
-      stopTranscription();
+      stopTranscription(false);
     }
-  }, [isTranscribing, stopTranscription]);
+  }, [isTranscribing, isSpeaking, stopTranscription]);
 
   // --- Process next question in queue ---
   const processNextQuestion = useCallback(async () => {
-    if (isTranscribing||questionQueue.current.length === 0) return;
+    if (isTranscribing || questionQueue.current.length === 0) return;
 
     const { q, idx, tot } = questionQueue.current.shift();
 
@@ -181,18 +207,16 @@ const InterviewSession = ({ interviewId }) => {
     setTotal(tot);
     setAnalysis(null);
     setTranscript('');
+    setIsProcessingResponse(false);
     partial.current = '';
+    hasSubmittedResponse.current = false;
 
-    await startTranscription();
     await speak(q);
-      const checkNext = setInterval(() => {
-      if (!isTranscribing && questionQueue.current.length > 0) {
-        clearInterval(checkNext);
-        processNextQuestion();
-      }
-    }, 1500);
     
-  }, [startTranscription, speak]);
+    if (!completed) {
+      await startTranscription();
+    }
+  }, [startTranscription, speak, isTranscribing, completed]);
 
   // --- Handle new question ---
   const handleQuestion = useCallback(
@@ -201,12 +225,21 @@ const InterviewSession = ({ interviewId }) => {
       processedQuestions.current.add(idx);
       questionQueue.current.push({ q, idx, tot });
 
-      if (!isTranscribingRef.current) {
+      if (!isTranscribingRef.current && !isProcessingResponse) {
         processNextQuestion();
       }
     },
-    [processNextQuestion]
+    [processNextQuestion, isProcessingResponse]
   );
+
+  // --- Manual submit button ---
+  const handleManualSubmit = useCallback(() => {
+    if (partial.current.trim().length > 5) {
+      stopTranscription(true);
+    } else {
+      setError('Please provide a longer response');
+    }
+  }, [stopTranscription]);
 
   // --- Interview WebSocket setup ---
   useEffect(() => {
@@ -229,23 +262,43 @@ const InterviewSession = ({ interviewId }) => {
         case 'question':
           console.log('New question:', msg);
           handleQuestion(msg.question, msg.questionIndex, msg.totalQuestions);
-          // ❌ removed redundant processNextQuestion here
           break;
         case 'analysis':
           console.log('Analysis:', msg);
           setAnalysis(msg.analysis);
+          setIsProcessingResponse(false);
+          
+          // NEW: Store this analysis with question context
+          setQuestionAnalyses(prev => [
+            ...prev,
+            {
+              questionIndex: msg.questionIndex || qIndex,
+              question: question,
+              response: partial.current,
+              analysis: msg.analysis,
+              timestamp: new Date()
+            }
+          ]);
+          
+          // Process next question after delay
+          setTimeout(() => {
+            if (questionQueue.current.length > 0) {
+              processNextQuestion();
+            }
+          }, 3000);
           break;
         case 'finalReport':
           setFinalReport(msg.report);
           break;
         case 'end':
-          stopTranscription();
+          stopTranscription(false);
           setCompleted(true);
           setStatus('completed');
           break;
         case 'error':
           setError(msg.message);
-          stopTranscription();
+          setIsProcessingResponse(false);
+          stopTranscription(false);
           setStatus('error');
           break;
       }
@@ -255,72 +308,192 @@ const InterviewSession = ({ interviewId }) => {
     ws.onclose = () => setStatus('disconnected');
 
     return () => {
-      stopTranscription();
+      stopTranscription(false);
+      speechSynthesis.cancel();
     };
-  }, [interviewId, handleQuestion, stopTranscription]);
+  }, [interviewId, handleQuestion, stopTranscription, processNextQuestion, qIndex, question]);
 
   return (
-    <div className="p-6 bg-gray-900 text-white rounded max-w-xl mx-auto">
-      <div className="flex items-center mb-4">
-        <div
-          className={`w-3 h-3 mr-2 rounded-full ${
-            status === 'connected'
-              ? 'bg-green-500'
-              : status === 'error'
-              ? 'bg-red-500'
-              : 'bg-gray-500'
-          }`}
-        />
-        <span className="text-sm">{status}</span>
+    <div className="p-6 bg-gray-900 text-white rounded max-w-4xl mx-auto">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center">
+          <div
+            className={`w-3 h-3 mr-2 rounded-full ${
+              status === 'connected'
+                ? 'bg-green-500'
+                : status === 'error'
+                ? 'bg-red-500'
+                : 'bg-gray-500'
+            }`}
+          />
+          <span className="text-sm">{status}</span>
+        </div>
+        
+        {/* NEW: Toggle button for previous analyses */}
+        {questionAnalyses.length > 0 && (
+          <button
+            onClick={() => setShowPreviousAnalyses(!showPreviousAnalyses)}
+            className="bg-blue-600 hover:bg-blue-700 py-1 px-3 rounded text-sm"
+          >
+            {showPreviousAnalyses ? 'Hide' : 'Show'} Previous Analyses ({questionAnalyses.length})
+          </button>
+        )}
       </div>
 
-      <h2 className="text-2xl mb-4">🎤 AI Voice Interview</h2>
+      <h2 className="text-2xl mb-4">AI Voice Interview</h2>
+
+      {/* NEW: Previous Analyses Section */}
+      {showPreviousAnalyses && questionAnalyses.length > 0 && (
+        <div className="mb-6 bg-gray-800 p-4 rounded">
+          <h3 className="text-lg font-semibold mb-3">Previous Question Analyses</h3>
+          <div className="space-y-4 max-h-96 overflow-y-auto">
+            {questionAnalyses.map((qa, index) => (
+              <div key={index} className="bg-gray-700 p-3 rounded">
+                <div className="text-sm text-gray-400 mb-2">
+                  Question {qa.questionIndex + 1}: {qa.question}
+                </div>
+                <div className="text-sm mb-2">
+                  <strong>Your Response:</strong> {qa.response.substring(0, 100)}
+                  {qa.response.length > 100 && '...'}
+                </div>
+                <div className="text-sm">
+                  <strong>Feedback:</strong> {qa.analysis.summary}
+                </div>
+                <div className="text-xs text-gray-400 mt-1 flex gap-4">
+                  <span>Confidence: {qa.analysis.confidence}</span>
+                  <span>Clarity: {qa.analysis.clarity}</span>
+                  <span>Score: {qa.analysis.score || 'N/A'}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {completed ? (
-        <div className="text-green-400">✅ Interview completed!</div>
+        <div className="text-green-400">Interview completed!</div>
       ) : (
         <>
           <div className="bg-gray-800 p-4 rounded mb-4">
             <p className="font-semibold">
-              🧠 Q {qIndex + 1}/{total}: {question || 'Waiting…'}
+              Q {qIndex + 1}/{total}: {question || 'Waiting…'}
             </p>
           </div>
 
-          <div className="flex items-center mb-4">
-            <div
-              className={`w-4 h-4 rounded-full ${
-                isTranscribing ? 'bg-red-500 animate-pulse' : 'bg-gray-600'
-              }`}
-            />
-            <span className="ml-2 text-sm">{isTranscribing ? 'Listening…' : 'Not listening'}</span>
+          {/* Status indicators */}
+          <div className="flex gap-4 mb-4">
+            <div className="flex items-center">
+              <div
+                className={`w-4 h-4 rounded-full ${
+                  isSpeaking ? 'bg-blue-500 animate-pulse' : 'bg-gray-600'
+                }`}
+              />
+              <span className="ml-2 text-sm">{isSpeaking ? 'AI Speaking...' : 'Silent'}</span>
+            </div>
+            
+            <div className="flex items-center">
+              <div
+                className={`w-4 h-4 rounded-full ${
+                  isTranscribing ? 'bg-red-500 animate-pulse' : 'bg-gray-600'
+                }`}
+              />
+              <span className="ml-2 text-sm">{isTranscribing ? 'Listening...' : 'Not listening'}</span>
+            </div>
           </div>
 
-          {isTranscribing && (
+          {/* Control buttons */}
+          {isTranscribing && transcript.length > 10 && (
             <button
-              onClick={stopTranscription}
-              className="bg-red-600 py-2 px-4 rounded mb-4"
+              onClick={handleManualSubmit}
+              className="bg-green-600 hover:bg-green-700 py-2 px-4 rounded mb-4 mr-2"
+              disabled={isProcessingResponse}
             >
-              ⏹ Stop
+              Submit Answer
             </button>
           )}
 
+          {isTranscribing && (
+            <button
+              onClick={() => stopTranscription(false)}
+              className="bg-red-600 hover:bg-red-700 py-2 px-4 rounded mb-4"
+            >
+              Cancel
+            </button>
+          )}
+
+          {isProcessingResponse && (
+            <div className="text-yellow-400 mb-4">
+              Processing your response...
+            </div>
+          )}
+
+          {/* Live transcript */}
           {transcript && (
-            <p className="italic bg-gray-800 p-3 rounded">You: {transcript}</p>
+            <div className="bg-gray-800 p-3 rounded mb-4">
+              <p className="text-sm text-gray-400 mb-1">Your response:</p>
+              <p className="italic">{transcript}</p>
+              <p className="text-xs text-gray-500 mt-2">
+                {transcript.split(' ').length} words
+              </p>
+            </div>
           )}
         </>
       )}
 
-      {error && <p className="text-red-400 mt-4">⚠️ {error}</p>}
-      {analysis && (
-        <div className="mt-4 bg-gray-800 p-4 rounded">
-          <strong>Feedback:</strong>
-          <p>{analysis.summary || analysis}</p>
+      {error && <p className="text-red-400 mt-4">{error}</p>}
+      
+      {/* Current question feedback */}
+      {analysis && !isProcessingResponse && (
+        <div className="mt-4 bg-gray-800 p-4 rounded border border-gray-700">
+          <strong className="text-green-400">Current Question Feedback:</strong>
+          <p className="mt-2">{analysis.summary || 'Analysis complete'}</p>
+          <div className="mt-2 text-sm grid grid-cols-2 gap-2">
+            <span className="text-gray-400">Confidence: {analysis.confidence}</span>
+            <span className="text-gray-400">Clarity: {analysis.clarity}</span>
+            <span className="text-gray-400">Leadership: {analysis.leadership}</span>
+            <span className="text-gray-400">Technical: {analysis.technicalUnderstanding}</span>
+          </div>
+          {analysis.score && (
+            <div className="mt-2 text-sm">
+              <span className="text-gray-400">Score: </span>
+              <span className="font-semibold">{analysis.score}/100</span>
+            </div>
+          )}
         </div>
       )}
+      
       {finalReport && (
         <div className="mt-4 bg-green-900 p-4 rounded">
           <strong>Final Report:</strong>
-          <p>{finalReport.recommendation}</p>
+          <p className="mt-2">{finalReport.recommendation}</p>
+          
+          {/* Display detailed final report */}
+          {finalReport.perQuestion && (
+            <div className="mt-4">
+              <h4 className="font-semibold mb-2">Question-by-Question Summary:</h4>
+              {finalReport.perQuestion.map((q, index) => (
+                <div key={index} className="mb-3 p-3 bg-green-800 rounded">
+                  <div className="text-sm font-medium mb-1">Q{index + 1}: {q.question}</div>
+                  <div className="text-xs text-green-200">{q.summary}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {finalReport.overallRatings && (
+            <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+              <div>Overall Confidence: {finalReport.overallRatings.confidence}</div>
+              <div>Overall Clarity: {finalReport.overallRatings.clarity}</div>
+              <div>Leadership: {finalReport.overallRatings.leadership}</div>
+              <div>Technical: {finalReport.overallRatings.technicalUnderstanding}</div>
+            </div>
+          )}
+          
+          {finalReport.averageScore && (
+            <div className="mt-2 text-lg font-bold">
+              Average Score: {finalReport.averageScore}/100
+            </div>
+          )}
         </div>
       )}
     </div>
