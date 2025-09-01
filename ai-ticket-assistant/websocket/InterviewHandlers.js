@@ -1,4 +1,5 @@
 import Interview from "../models/interview.js";
+import User from "../models/user.model.js"; // Import the User model
 import { analyzeResponse, summarizeOverallFeedback } from "../utils/analyzeresponse.js";
 
 export class InterviewHandler {
@@ -185,6 +186,35 @@ export class InterviewHandler {
       this.interviewData.finalReport = finalReport;
       this.interviewData.completedAt = new Date();
       await this.interviewData.save();
+
+      // Update moderator skills based on AI feedback
+      const user = await User.findById(this.userId);
+      if (user && user.role === "moderator" && finalReport.averageScore) {
+        const newProficiency = finalReport.averageScore; // Use averageScore as base proficiency
+
+        // Combine key strengths and areas for improvement as potential skills
+        const potentialSkills = [
+          ...(finalReport.keyStrengths || []),
+          ...(finalReport.areasForImprovement || [])
+        ];
+
+        for (const skillName of potentialSkills) {
+          const existingSkillIndex = user.skills.findIndex(s => s.name.toLowerCase() === skillName.toLowerCase());
+
+          if (existingSkillIndex > -1) {
+            // Update existing skill proficiency
+            user.skills[existingSkillIndex].proficiency = Math.min(100, Math.max(1, newProficiency));
+          } else {
+            // Add new skill
+            user.skills.push({
+              name: skillName,
+              proficiency: Math.min(100, Math.max(1, newProficiency))
+            });
+          }
+        }
+        await user.save();
+        console.log(`Moderator ${user.email} skills updated based on interview feedback.`);
+      }
 
       this.sendMessage({ type: "finalReport", report: finalReport });
       this.sendMessage({ type: "end", message: "Interview completed successfully!" });

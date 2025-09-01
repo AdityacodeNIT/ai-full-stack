@@ -21,8 +21,7 @@ const userSchema = new Schema(
     skills: [
       {
         name: { type: String },
-        level: { type: String, enum: ["Beginner", "Intermediate", "Advanced"] },
-        verified: { type: Boolean, default: false }, // <-- verification flag here
+        proficiency: { type: Number, min: 1, max: 100, default: 1 },
       },
     ],
   },

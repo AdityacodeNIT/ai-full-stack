@@ -15,7 +15,7 @@ export const signup = async (req, res) => {
     // Ensure skills are in correct object format
     skills = skills.map(skill =>
       typeof skill === "string"
-        ? { name: skill, level: "Beginner", verified: false }
+        ? { name: skill, proficiency: 1 } // Default proficiency for new skills
         : skill
     );
 
@@ -116,7 +116,7 @@ export const updateUser = async (req, res) => {
     // Ensure skills are stored in correct object format
     skills = skills.map(skill =>
       typeof skill === "string"
-        ? { name: skill, level: "Beginner", verified: false }
+        ? { name: skill, proficiency: 1 } // Default proficiency for new skills
         : skill
     );
 
@@ -153,6 +153,3 @@ try {
             details:error.message})
 }
 }
-
-
-
