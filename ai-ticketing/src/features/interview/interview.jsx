@@ -4,10 +4,7 @@ import axios from 'axios';
 
 
   const token = localStorage.getItem("token");
-  if(!token){
 
-    throw new Error("No token found. User might not be authenticated.");
-  }
 // Async thunk to call the backend API
 export const generateInterview = createAsyncThunk(
   'interview/generateInterview',
