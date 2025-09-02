@@ -13,7 +13,7 @@ RUN npm install
 COPY ai-ticket-assistant/ ./
 
 # Expose Vite port (5173)
-EXPOSE 8000
+EXPOSE  $PORT
 
 # Start Vite dev server on all interfaces
 CMD ["npm", "start"]
