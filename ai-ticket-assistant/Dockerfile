@@ -10,7 +10,7 @@ COPY ai-ticket-assistant/package*.json ./
 RUN npm install
 
 # Copy source code
-COPY . .
+COPY ai-ticket-assistant/ ./
 
 # Expose Vite port (5173)
 EXPOSE 8000
