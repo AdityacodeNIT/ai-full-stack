@@ -113,13 +113,13 @@ const InterviewForm = () => {
   ];
 
   return (
-    <div className="max-w-xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-lg">
-      <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">
+    <div className="max-w-xl mx-auto mt-10 p-6 bg-white dark:bg-gray-800 shadow-lg rounded-lg">
+      <h2 className="text-2xl font-bold mb-6 text-center text-gray-800 dark:text-gray-200">
         🎙️ Generate Interview
       </h2>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+        <div className="mb-4 p-3 bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-300 rounded">
           <p className="text-sm">{error}</p>
         </div>
       )}
@@ -127,7 +127,7 @@ const InterviewForm = () => {
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Role Input */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Role/Position *
           </label>
           <input
@@ -135,26 +135,26 @@ const InterviewForm = () => {
             placeholder="e.g., Backend Developer, Data Scientist"
             value={formData.role}
             onChange={(e) => handleInputChange('role', e.target.value)}
-            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-              formErrors.role ? 'border-red-400' : 'border-gray-300'
+            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 ${
+              formErrors.role ? 'border-red-400 dark:border-red-500' : 'border-gray-300 dark:border-gray-600'
             }`}
             disabled={loading || isSubmitting}
           />
           {formErrors.role && (
-            <p className="mt-1 text-sm text-red-600">{formErrors.role}</p>
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">{formErrors.role}</p>
           )}
         </div>
 
         {/* Experience Level */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Experience Level *
           </label>
           <select
             value={formData.level}
             onChange={(e) => handleInputChange('level', e.target.value)}
-            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-              formErrors.level ? 'border-red-400' : 'border-gray-300'
+            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 ${
+              formErrors.level ? 'border-red-400 dark:border-red-500' : 'border-gray-300 dark:border-gray-600'
             }`}
             disabled={loading || isSubmitting}
           >
@@ -165,19 +165,19 @@ const InterviewForm = () => {
             ))}
           </select>
           {formErrors.level && (
-            <p className="mt-1 text-sm text-red-600">{formErrors.level}</p>
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">{formErrors.level}</p>
           )}
         </div>
 
         {/* Interview Type */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Interview Focus
           </label>
           <select
             value={formData.type}
             onChange={(e) => handleInputChange('type', e.target.value)}
-            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
             disabled={loading || isSubmitting}
           >
             {typeOptions.map(option => (
@@ -190,7 +190,7 @@ const InterviewForm = () => {
 
         {/* Tech Stack */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Tech Stack (Optional)
           </label>
           <input
@@ -198,23 +198,23 @@ const InterviewForm = () => {
             placeholder="e.g., React, Node.js, PostgreSQL, AWS"
             value={formData.techstack}
             onChange={(e) => handleInputChange('techstack', e.target.value)}
-            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-              formErrors.techstack ? 'border-red-400' : 'border-gray-300'
+            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 ${
+              formErrors.techstack ? 'border-red-400 dark:border-red-500' : 'border-gray-300 dark:border-gray-600'
             }`}
             disabled={loading || isSubmitting}
             maxLength="200"
           />
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             Comma-separated technologies (optional)
           </p>
           {formErrors.techstack && (
-            <p className="mt-1 text-sm text-red-600">{formErrors.techstack}</p>
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">{formErrors.techstack}</p>
           )}
         </div>
 
         {/* Number of Questions */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Number of Questions *
           </label>
           <input
@@ -223,13 +223,13 @@ const InterviewForm = () => {
             max="20"
             value={formData.amount}
             onChange={(e) => handleInputChange('amount', e.target.value)}
-            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-              formErrors.amount ? 'border-red-400' : 'border-gray-300'
+            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 ${
+              formErrors.amount ? 'border-red-400 dark:border-red-500' : 'border-gray-300 dark:border-gray-600'
             }`}
             disabled={loading || isSubmitting}
           />
           {formErrors.amount && (
-            <p className="mt-1 text-sm text-red-600">{formErrors.amount}</p>
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">{formErrors.amount}</p>
           )}
         </div>
 
@@ -259,7 +259,7 @@ const InterviewForm = () => {
 
       {/* Success Message */}
       {interview && (
-        <div className="mt-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded">
+        <div className="mt-4 p-3 bg-green-100 dark:bg-green-900 border border-green-400 dark:border-green-600 text-green-700 dark:text-green-300 rounded">
           <p className="text-sm">✅ Interview generated successfully! You can now start the interview.</p>
         </div>
       )}
