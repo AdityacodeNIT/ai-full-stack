@@ -34,18 +34,25 @@ export const signup = async (req, res) => {
 
     const token = jwt.sign(
       { _id: user._id, role: user.role },
-      process.env.JWT_SECRET
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
     );
 
-    // Set HTTP-only cookie
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
-
-    res.json({ user, message: 'Signup successful' });
+    // For cross-domain deployments, send token in response body
+    // Also set cookie for same-domain scenarios
+    if (process.env.NODE_ENV === 'production') {
+      // Production: send token in response for cross-domain
+      res.json({ user, token, message: 'Signup successful' });
+    } else {
+      // Development: use HTTP-only cookie
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      });
+      res.json({ user, message: 'Signup successful' });
+    }
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -71,17 +78,27 @@ export const login = async (req, res) => {
       return res.status(401).json({ error: "PASSWORD INCORRECT" });
     }
 
-    const token = jwt.sign({ _id: user._id, role: user.role }, process.env.JWT_SECRET);
+    const token = jwt.sign(
+      { _id: user._id, role: user.role }, 
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
 
-    // Set HTTP-only cookie
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
-
-    res.json({ user, message: 'Login successful' });
+    // For cross-domain deployments, send token in response body
+    // Also set cookie for same-domain scenarios
+    if (process.env.NODE_ENV === 'production') {
+      // Production: send token in response for cross-domain
+      res.json({ user, token, message: 'Login successful' });
+    } else {
+      // Development: use HTTP-only cookie
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      });
+      res.json({ user, message: 'Login successful' });
+    }
   } catch (error) {
     res.status(500).json({
       error: "login_failed",
@@ -97,7 +114,7 @@ export const logout = async (req, res) => {
     res.clearCookie('token', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict'
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax'
     });
 
     res.json({ message: "User logged out successfully" });

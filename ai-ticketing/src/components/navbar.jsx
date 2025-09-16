@@ -25,12 +25,12 @@ export default function Navbar() {
   const logout = async () => {
     try {
       await api.post('/api/auth/logout');
-      setUser(null);
-      setIsAuthenticated(false);
-      navigate("/login");
     } catch (error) {
       console.error('Logout error:', error);
-      // Even if logout fails on server, clear local state
+    } finally {
+      // Clear both localStorage and local state
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
       setUser(null);
       setIsAuthenticated(false);
       navigate("/login");

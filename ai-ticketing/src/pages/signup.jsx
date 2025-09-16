@@ -18,8 +18,12 @@ export default function SignupPage() {
       const res = await api.post('/api/auth/signup', form);
 
       if (res.status === 200) {
-        // Cookie is automatically set by the server
-        // No need to manually store anything in localStorage
+        // In production, token is sent in response body for cross-domain
+        // In development, cookie is used
+        if (res.data.token) {
+          localStorage.setItem('token', res.data.token);
+          localStorage.setItem('user', JSON.stringify(res.data.user));
+        }
         navigate("/");
       }
     } catch (err) {

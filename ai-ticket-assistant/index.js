@@ -131,7 +131,12 @@ if (pathname === "/assembly" || pathname === "/ws/assembly") {
 // ------------------------------
 // Express middlewares
 // ------------------------------
-app.use(cors({ origin:process.env.CORS_ORIGIN, credentials: true }));
+app.use(cors({ 
+  origin: process.env.NODE_ENV === 'production' 
+    ? [process.env.FRONTEND_URL, process.env.CORS_ORIGIN].filter(Boolean)
+    : process.env.CORS_ORIGIN,
+  credentials: true 
+}));
 app.use(express.json());
 app.use(cookieParser());
 

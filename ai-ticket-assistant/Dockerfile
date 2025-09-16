@@ -1,19 +1,18 @@
 FROM node:20-slim
 
-
 WORKDIR /app
 
 # Copy package files
-COPY ai-ticket-assistant/package*.json ./
+COPY package*.json ./
 
 # Install dependencies
 RUN npm install
 
 # Copy source code
-COPY ai-ticket-assistant/ ./
+COPY . .
 
-# Expose Vite port (5173)
-EXPOSE  $PORT
+# Expose backend port
+EXPOSE 3000
 
-# Start Vite dev server on all interfaces
+# Start backend server
 CMD ["npm", "start"]
