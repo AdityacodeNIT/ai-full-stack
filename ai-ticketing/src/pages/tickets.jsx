@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import axios from "axios";
+import api from "../utils/api.js";
 
 export default function Tickets() {
   const [form, setForm] = useState({ title: "", description: "" });
@@ -9,20 +9,14 @@ export default function Tickets() {
   const [fetchingTickets, setFetchingTickets] = useState(true);
   const [filterStatus, setFilterStatus] = useState("current"); // 'current' or 'succeeded'
 
-  const token = localStorage.getItem("token");
-
   const fetchTickets = async (statusFilter) => {
     setFetchingTickets(true);
     try {
       const url = statusFilter === "succeeded"
-        ? `${import.meta.env.VITE_API_URL}/ticket?status=succeeded`
-        : `${import.meta.env.VITE_API_URL}/ticket`; // Default to all or 'in progress'
+        ? `/ticket?status=succeeded`
+        : `/ticket`; // Default to all or 'in progress'
       
-      const res = await axios.get(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await api.get(url);
       const data = res.data;
       console.log(data);
       setTickets(Array.isArray(data) ? data : data.tickets || []);
@@ -46,25 +40,15 @@ export default function Tickets() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch(`${import.meta.env.VITE_SERVER_URL}/ticket`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(form),
-      });
+      const res = await api.post('/ticket', form);
 
-      const data = await res.json();
-
-      if (res.ok) {
+      if (res.status === 200 || res.status === 201) {
         setForm({ title: "", description: "" });
         fetchTickets(filterStatus); // Refresh list with current filter
-      } else {
-        alert(data.message || "Ticket creation failed");
       }
     } catch (err) {
-      alert("Error creating ticket");
+      const errorMessage = err.response?.data?.message || "Ticket creation failed";
+      alert(errorMessage);
       console.error(err);
     } finally {
       setLoading(false);

@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { getWebSocketToken } from '../utils/websocket.js';
 
 const InterviewSession = ({ interviewId }) => {
   const [question, setQuestion] = useState('');
@@ -154,7 +155,7 @@ const InterviewSession = ({ interviewId }) => {
       mediaSource.current = src;
       src.connect(node);
 
-      const token = localStorage.getItem('token');
+      const token = await getWebSocketToken();
       const socket = new WebSocket(`${import.meta.env.VITE_WS_URL}/assembly?token=${token}`);
       assemblyWS.current = socket;
       socket.binaryType = 'arraybuffer';
@@ -245,11 +246,11 @@ const InterviewSession = ({ interviewId }) => {
   useEffect(() => {
     if (interviewWS.current) return;
 
-    const token = localStorage.getItem('token');
-    if (!token) return setError('Token missing');
-
-    const ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/ws/interview?token=${token}`);
-    interviewWS.current = ws;
+    const setupWebSocket = async () => {
+      try {
+        const token = await getWebSocketToken();
+        const ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/ws/interview?token=${token}`);
+        interviewWS.current = ws;
 
     ws.onopen = () => {
       setStatus('connected');
@@ -304,13 +305,20 @@ const InterviewSession = ({ interviewId }) => {
       }
     };
 
-    ws.onerror = () => setError('Interview WS error');
-    ws.onclose = () => setStatus('disconnected');
+        ws.onerror = () => setError('Interview WS error');
+        ws.onclose = () => setStatus('disconnected');
 
-    return () => {
-      stopTranscription(false);
-      speechSynthesis.cancel();
+        return () => {
+          stopTranscription(false);
+          speechSynthesis.cancel();
+        };
+      } catch (error) {
+        console.error('Failed to setup WebSocket:', error);
+        setError('Failed to connect to interview service');
+      }
     };
+
+    setupWebSocket();
   }, [interviewId, handleQuestion, stopTranscription, processNextQuestion, qIndex, question]);
 
   return (

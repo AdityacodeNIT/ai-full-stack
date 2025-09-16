@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../utils/api.js";
 
 export default function AdminPanel() {
   const [users, setUsers] = useState([]);
@@ -8,35 +8,20 @@ export default function AdminPanel() {
   const [formData, setFormData] = useState({ role: "", skills: "" });
   const [searchQuery, setSearchQuery] = useState("");
 
-  const token = localStorage.getItem("token");
-
   useEffect(() => {
-    if (token) fetchUsers();
-    console.log("useEffect running with token:", token);
-  }, [token]);
+    fetchUsers();
+  }, []);
 
   const fetchUsers = async () => {
     console.log("📡 fetchUsers() called");
     try {
-      const res = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/auth/getusers`,
-        {
-         
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const res = await api.get('/api/auth/getusers');
       console.log("🧾 Response received:", res);
 
-      const data = await res.data;
+      const data = res.data;
       console.log(data);
-      if (res.status === 200) {
-        setUsers(data);
-        setFilteredUsers(data);
-      } else {
-        console.error(data.error);
-      }
+      setUsers(data);
+      setFilteredUsers(data);
     } catch (err) {
       console.error("Error fetching users", err);
     }
@@ -52,40 +37,26 @@ export default function AdminPanel() {
 
   const handleUpdate = async () => {
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/auth/updateUser`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            email: editingUser,
-            role: formData.role,
-            skills: formData.skills
-              .split(",")
-              .map(skill => ({
-                name: skill.trim(),
-                level: "Beginner", // default or choose from UI
-                verified: false
-              }))
-              .filter(s => s.name),
-          }),
-        }
-      );
-
-      const data = await res.json();
-      if (!res.ok) {
-        console.error(data.error || "Failed to update user");
-        return;
-      }
+      const res = await api.post('/api/auth/updateUser', {
+        email: editingUser,
+        role: formData.role,
+        skills: formData.skills
+          .split(",")
+          .map(skill => ({
+            name: skill.trim(),
+            level: "Beginner", // default or choose from UI
+            verified: false
+          }))
+          .filter(s => s.name),
+      });
 
       setEditingUser(null);
       setFormData({ role: "", skills: "" });
       fetchUsers();
     } catch (err) {
       console.error("Update failed", err);
+      const errorMessage = err.response?.data?.error || "Failed to update user";
+      alert(errorMessage);
     }
   };
 

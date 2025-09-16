@@ -1,26 +1,14 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
-
-
-
-  const token = localStorage.getItem("token");
+import api from '../../utils/api.js';
 
 // Async thunk to call the backend API
 export const generateInterview = createAsyncThunk(
   'interview/generateInterview',
   async (formData, { rejectWithValue }) => {
-
     try {
-      const res = await axios.post(`${import.meta.env.VITE_API_URL}/interview`, formData, {
-         
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          
-      });
+      const res = await api.post('/interview', formData);
       console.log(res.data)
-      return res.data.interview;
-       // contains _id and questions
+      return res.data.interview; // contains _id and questions
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to generate interview');
     }
@@ -31,11 +19,7 @@ export const getAllInterviews = createAsyncThunk(
     'interview/getAllInterviews',
     async (_, { rejectWithValue }) => {
         try {
-            const res = await axios.get(`${import.meta.env.VITE_API_URL}/interview`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            });
+            const res = await api.get('/interview');
             return res.data.interviews;
         } catch (err) {
             return rejectWithValue(err.response?.data?.message || 'Failed to fetch interviews');

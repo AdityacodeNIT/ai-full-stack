@@ -1,35 +1,23 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
+import api from "../utils/api.js";
 
 function Ticket() {
   const { id } = useParams();
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const token = localStorage.getItem("token");
-
   useEffect(() => {
     const fetchTicket = async () => {
       try {
-        const res = await fetch(
-          `${import.meta.env.VITE_API_URL}/ticket/${id}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-        const data = await res.json();
-        console.log(data);
-        if (res.ok) {
-          setTicket(data.ticket);
-        } else {
-          alert(data.message || "Failed to fetch ticket");
-        }
+        const res = await api.get(`/ticket/${id}`);
+        console.log(res.data);
+        setTicket(res.data.ticket);
       } catch (err) {
         console.error(err);
-        alert("Something went wrong");
+        const errorMessage = err.response?.data?.message || "Failed to fetch ticket";
+        alert(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -134,27 +122,13 @@ function Ticket() {
   async function handleMarkAsSucceeded() {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL}/ticket/${id}/status`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ status: "succeeded" }),
-        }
-      );
-      const data = await res.json();
-      if (res.ok) {
-        setTicket(data.ticket);
-        alert("Ticket marked as succeeded!");
-      } else {
-        alert(data.message || "Failed to update ticket status");
-      }
+      const res = await api.put(`/ticket/${id}/status`, { status: "succeeded" });
+      setTicket(res.data.ticket);
+      alert("Ticket marked as succeeded!");
     } catch (err) {
       console.error(err);
-      alert("Something went wrong while updating status");
+      const errorMessage = err.response?.data?.message || "Failed to update ticket status";
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }

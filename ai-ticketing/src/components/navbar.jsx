@@ -1,17 +1,40 @@
 import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import api from "../utils/api.js";
 
 export default function Navbar() {
-  const token = localStorage.getItem("token");
-  let user = localStorage.getItem("user");
-  if (user) {
-    user = JSON.parse(user);
-  }
+  const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const navigate = useNavigate();
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    navigate("/login");
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await api.get('/api/auth/me');
+        setUser(res.data.user);
+        setIsAuthenticated(true);
+      } catch (error) {
+        setUser(null);
+        setIsAuthenticated(false);
+      }
+    };
+    
+    checkAuth();
+  }, []);
+
+  const logout = async () => {
+    try {
+      await api.post('/api/auth/logout');
+      setUser(null);
+      setIsAuthenticated(false);
+      navigate("/login");
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Even if logout fails on server, clear local state
+      setUser(null);
+      setIsAuthenticated(false);
+      navigate("/login");
+    }
   };
 
   const appName = "IntelliTicket"; // Suggested new name
@@ -40,7 +63,7 @@ export default function Navbar() {
             tabIndex={0}
             className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-200 rounded-box w-52"
           >
-            {!token ? (
+            {!isAuthenticated ? (
               <>
                 <li>
                   <Link to="/signup">Signup</Link>
@@ -78,7 +101,7 @@ export default function Navbar() {
       </div>
       <div className="navbar-center hidden lg:flex">
         <ul className="menu menu-horizontal px-1">
-          {!token ? (
+          {!isAuthenticated ? (
             <>
               <li>
                 <Link to="/signup">Signup</Link>
@@ -108,7 +131,7 @@ export default function Navbar() {
         </ul>
       </div>
       <div className="navbar-end">
-        {token && (
+        {isAuthenticated && (
           <div className="flex items-center gap-2">
             <p className="text-sm hidden md:block">Hi, {user?.email}</p>
             <button onClick={logout} className="btn btn-sm btn-outline btn-error hidden lg:flex">

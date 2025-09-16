@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../utils/api.js";
 
 export default function LoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
@@ -15,26 +15,16 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-  const res = await axios.post(
-  `${import.meta.env.VITE_API_URL}/api/auth/login`,
-  form,
+      const res = await api.post('/api/auth/login', form);
 
-);
-
-    
-
- 
-
-     if (res.status === 200) {
-  localStorage.setItem("token", res.data.token);
-  localStorage.setItem("user", JSON.stringify(res.data.user));
-  navigate("/");
-}
- else {
-        alert(data.message || "Login failed");
+      if (res.status === 200) {
+        // Cookie is automatically set by the server
+        // No need to manually store anything in localStorage
+        navigate("/");
       }
     } catch (err) {
-      alert("Something went wrong");
+      const errorMessage = err.response?.data?.error || err.response?.data?.message || "Login failed";
+      alert(errorMessage);
       console.error(err);
     } finally {
       setLoading(false);

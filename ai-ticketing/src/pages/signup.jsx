@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "../utils/api.js";
 
 export default function SignupPage() {
   const [form, setForm] = useState({ email: "", password: "" });
@@ -14,28 +15,16 @@ export default function SignupPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_SERVER_URL}/api/auth/signup`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(form),
-        }
-      );
+      const res = await api.post('/api/auth/signup', form);
 
-      const data = await res.json();
-
-      if (res.ok) {
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
+      if (res.status === 200) {
+        // Cookie is automatically set by the server
+        // No need to manually store anything in localStorage
         navigate("/");
-      } else {
-        alert(data.message || "Signup failed");
       }
     } catch (err) {
-      alert("Something went wrong");
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || "Signup failed";
+      alert(errorMessage);
       console.error(err);
     } finally {
       setLoading(false);

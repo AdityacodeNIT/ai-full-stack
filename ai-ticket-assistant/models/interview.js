@@ -8,7 +8,7 @@ const interviewSchema = new Schema(
         },
         type: { // This corresponds to 'questionFocusType' from earlier discussion
             type: String,
-            enum: ['technical', 'behavioural', 'a balance'], // Good to have enum for consistency
+            enum: ['technical', 'behavioural', 'balanced'], // Good to have enum for consistency
             default: 'a balance'
         },
         level: {
