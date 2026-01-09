@@ -5,8 +5,8 @@ import { getHandler } from "./server.js";
 class AssemblySocketHandler {
   constructor(userId, interviewWS, interviewHandler) {
     this.userId = userId;
-    this.interviewWS = interviewWS;         // frontend WS
-    this.interviewHandler = interviewHandler; // backend handler
+    this.interviewWS = interviewWS;   
+    this.interviewHandler = interviewHandler;
 
     this.transcriber = null;
     this.isConnected = false;
@@ -125,9 +125,6 @@ class AssemblySocketHandler {
     this.isConnecting = this.isConnected = false;
     this.reconnectAttempts = 0;
 
-    // DON'T automatically send transcript on close
-    // Let the frontend control when to submit
-
     if (this.transcriber && this._everConnected) {
       try { this.transcriber._ws?.removeAllListeners("error"); } catch {}
       try { await this.transcriber.close(); } catch {}
@@ -180,12 +177,8 @@ class AssemblySocketHandler {
         isFinal: false
       }));
     }
-
-    // DON'T automatically submit on turn end
-    // The frontend will control submission via the close() method
   }
 }
-
 // ---------------------------
 // Create Assembly WS
 // ---------------------------

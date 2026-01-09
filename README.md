@@ -42,7 +42,7 @@ This project provides a comprehensive solution for managing support tickets and 
 
 ## ✨ Features
 
-- ✅ **User Authentication**: Secure sign-up and login with JWT.
+-  **User Authentication**: Secure sign-up and login with JWT.
 - 🎫 **Ticket Management**: Create, view, update, and delete support tickets.
 - 🗣️ **AI-Powered Interview Assistant**: Real-time voice-based interview practice with AI feedback.
 - 💬 **Real-time Communication**: WebSockets for instant updates and interactive features.

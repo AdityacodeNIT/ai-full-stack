@@ -3,29 +3,23 @@ import jwt from "jsonwebtoken";
 import User from "../models/user.model.js"
 import { inngest } from '../inngest/client.js'
 
-
-
-
 export const signup = async (req, res) => {
   let { email, password, skills = [] } = req.body;
 
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-
     // Ensure skills are in correct object format
     skills = skills.map(skill =>
       typeof skill === "string"
-        ? { name: skill, proficiency: 1 } // Default proficiency for new skills
+        ? { name: skill, proficiency: 1 }
         : skill
     );
 
+    // 🔥 DO NOT HASH HERE
     const user = await User.create({
       email,
-      password: hashedPassword,
+      password, // plain password → model will hash it
       skills
     });
-
-    console.log(user);
 
     await inngest.send({
       name: "user/signup",
@@ -35,24 +29,33 @@ export const signup = async (req, res) => {
     const token = jwt.sign(
       { _id: user._id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: "7d" }
     );
 
-    // For cross-domain deployments, send token in response body
-    // Also set cookie for same-domain scenarios
-    if (process.env.NODE_ENV === 'production') {
-      // Production: send token in response for cross-domain
-      res.json({ user, token, message: 'Signup successful' });
-    } else {
-      // Development: use HTTP-only cookie
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: false,
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    // Remove password before sending response
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    if (process.env.NODE_ENV === "production") {
+      return res.status(201).json({
+        user: userResponse,
+        token,
+        message: "Signup successful",
       });
-      res.json({ user, message: 'Signup successful' });
     }
+
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: false,
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.status(201).json({
+      user: userResponse,
+      message: "Signup successful",
+    });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -63,49 +66,22 @@ export const signup = async (req, res) => {
 };
 
 
+
 export const login = async (req, res) => {
   const { email, password } = req.body;
-  console.log(req.body)
 
-  try {
-    const user = await User.findOne({ email })
-    console.log(user);
-    if (!user) {
-      return res.status(401).json({ error: "USER NOT FOUND" });
-    }
-    const compare = await bcrypt.compare(password, user.password);
-    if (!compare) {
-      return res.status(401).json({ error: "PASSWORD INCORRECT" });
-    }
-
-    const token = jwt.sign(
-      { _id: user._id, role: user.role }, 
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    // For cross-domain deployments, send token in response body
-    // Also set cookie for same-domain scenarios
-    if (process.env.NODE_ENV === 'production') {
-      // Production: send token in response for cross-domain
-      res.json({ user, token, message: 'Login successful' });
-    } else {
-      // Development: use HTTP-only cookie
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: false,
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-      });
-      res.json({ user, message: 'Login successful' });
-    }
-  } catch (error) {
-    res.status(500).json({
-      error: "login_failed",
-      details: error.message
-    })
+  const user = await User.findOne({ email }).select("+password");
+  if (!user) {
+    return res.status(401).json({ message: "Invalid credentials" });
   }
-}
+
+  const isMatch = await user.comparePassword(password);
+  if (!isMatch) {
+    return res.status(401).json({ message: "Invalid credentials" });
+  }
+
+  res.status(200).json({ message: "Login successful" });
+};
 
 
 export const logout = async (req, res) => {

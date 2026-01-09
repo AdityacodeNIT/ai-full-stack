@@ -13,7 +13,7 @@ import interviewRoutes from "./routes/interview.js";
 
 import { serve } from "inngest/express";
 import { inngest } from "./inngest/client.js";
-import { onUserSignup } from "./inngest/function/on-signup.js";
+
 import { onTicketCreated } from "./inngest/function/on-ticket-create.js";
 
 import { setupInterviewSocket } from "./websocket/server.js";
@@ -111,7 +111,7 @@ if (pathname === "/assembly" || pathname === "/ws/assembly") {
     const decoded = await verifyJWT(token, process.env.JWT_SECRET);
     req.user = decoded; 
     const userId = decoded._id;
-    // ✅ attach user to req
+    //  attach user to req
 
     assemblyWSS.handleUpgrade(req, socket, head, (ws) => {
       assemblyWSS.emit("connection", ws, req);
@@ -141,7 +141,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 // API routes
-app.use("/api/inngest", serve({ client: inngest, functions: [onUserSignup, onTicketCreated] }));
+app.use("/api/inngest", serve({ client: inngest, onTicketCreated }));
 app.use("/api/auth", userRoutes);
 app.use("/ticket", TicketRoutes);
 app.use("/interview", interviewRoutes);
@@ -154,11 +154,11 @@ const PORT = process.env.PORT || 3000;
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
-    console.log("✅ MongoDB connected");
+    console.log(" MongoDB connected");
     server.listen(PORT, () => {
       console.log(`🚀 Server + WS running at http://localhost:${PORT}`);
     });
   })
   .catch((err) => {
-    console.error("❌ MongoDB connection error:", err);
+    console.error(" MongoDB connection error:", err);
   });

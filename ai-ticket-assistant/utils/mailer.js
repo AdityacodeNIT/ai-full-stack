@@ -27,7 +27,7 @@ export const sendMail = async (to, subject, text) => {
     console.log("📤 Message sent:", info?.messageId || "No ID returned");
     return info;
   } catch (error) {
-    console.error("❌ Mail error:", error.message);
+    console.error(" Mail error:", error.message);
     throw error;
   }
 };

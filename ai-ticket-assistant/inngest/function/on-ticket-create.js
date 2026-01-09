@@ -71,7 +71,7 @@ export const onTicketCreated = inngest.createFunction(
         });
 
         if (!user) {
-          user = await User.findOne({ role: "admin" }); // ❌ Fix: "admin" must be in quotes
+          user = await User.findOne({ role: "admin" }); //  Fix: "admin" must be in quotes
         }
 
         await Ticket.findByIdAndUpdate(ticketobj._id, {
@@ -85,7 +85,7 @@ export const onTicketCreated = inngest.createFunction(
       // 6. Email notification
   await step.run("send-email-notification", async () => {
   if (!moderator) {
-    console.warn("⚠ No moderator assigned, skipping email");
+    console.warn("No moderator assigned, skipping email");
     return;
   }
 
@@ -103,7 +103,7 @@ export const onTicketCreated = inngest.createFunction(
       return { success: true };
 
     } catch (e) {
-      console.error("❌ error running step:", e.message);
+      console.error(" error running step:", e.message);
       return { success: false };
     }
   }

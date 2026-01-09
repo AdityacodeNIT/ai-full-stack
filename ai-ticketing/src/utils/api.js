@@ -1,37 +1,39 @@
-import axios from 'axios';
+import axios from "axios";
 
-// Create axios instance with default config
+// Axios instance
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
-  withCredentials: true, // This ensures cookies are sent with requests
+  withCredentials: true, // send HTTP-only cookies
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
-// Add request interceptor to include token from localStorage if available (for production)
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
+//  REMOVE token-based auth if using cookies
+// (recommended for security and consistency)
 
-// Add response interceptor to handle token expiration
+// Request interceptor (optional – keep ONLY if backend uses Bearer tokens)
+// api.interceptors.request.use(
+//   (config) => {
+//     const token = localStorage.getItem("token");
+//     if (token) {
+//       config.headers.Authorization = `Bearer ${token}`;
+//     }
+//     return config;
+//   },
+//   (error) => Promise.reject(error)
+// );
+
+// Response interceptor – NO hard redirects
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      // Clear any stale client state
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      //  DO NOT redirect here
+      // Let CheckAuth or route guards handle navigation
     }
     return Promise.reject(error);
   }

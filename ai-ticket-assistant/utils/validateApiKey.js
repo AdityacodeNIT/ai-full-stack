@@ -11,17 +11,17 @@ export async function validateApiKey() {
       }
     });
     if (response.status === 401) {
-      console.error('❌ Invalid AssemblyAI API Key');
+      console.error(' Invalid AssemblyAI API Key');
       return false;
     } else if (response.status === 403) {
-      console.error('❌ AssemblyAI API Key lacks permissions');
+      console.error(' AssemblyAI API Key lacks permissions');
       return false;
     } else if (response.ok) {
-      console.log('✅ AssemblyAI API Key is valid');
+      console.log(' AssemblyAI API Key is valid');
       return true;
     }
   } catch (error) {
-    console.error('❌ API Key validation failed:', error.message);
+    console.error(' API Key validation failed:', error.message);
     return false;
   }
 }

@@ -1,44 +1,39 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Navigate } from "react-router-dom";
 import api from "../utils/api.js";
 
 function CheckAuth({ children, protectedRoute }) {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("checking"); 
+  // checking | auth | noauth
 
   useEffect(() => {
-    const checkAuthentication = async () => {
-      try {
-        // Try to get user info from the server (which checks the HTTP-only cookie)
-        const res = await api.get('/api/auth/me');
-        
-        if (protectedRoute) {
-          // User is authenticated and route is protected - allow access
-          setLoading(false);
-        } else {
-          // User is authenticated but trying to access login/signup - redirect to home
-          navigate("/");
-        }
-      } catch (error) {
-        // User is not authenticated
-        if (protectedRoute) {
-          // Route is protected but user not authenticated - redirect to login
-          navigate("/login");
-        } else {
-          // Route is not protected and user not authenticated - allow access
-          setLoading(false);
-        }
-      }
+    let mounted = true;
+
+    api
+      .get("/api/auth/me")
+      .then(() => {
+        if (mounted) setStatus("auth");
+      })
+      .catch(() => {
+        if (mounted) setStatus("noauth");
+      });
+
+    return () => {
+      mounted = false;
     };
+  }, []); // 🔥 EMPTY DEP ARRAY (CRITICAL)
 
-    checkAuthentication();
-  }, [navigate, protectedRoute]);
+  if (status === "checking") return null;
 
-  if (loading) {
-    return <div>Loading...</div>;
-  } else {
-    return children;
+  if (protectedRoute && status === "noauth") {
+    return <Navigate to="/login" replace />;
   }
+
+  if (!protectedRoute && status === "auth") {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
 }
 
 export default CheckAuth;

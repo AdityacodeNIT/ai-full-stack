@@ -7,8 +7,6 @@ const router=express.Router();
 router.post("/",authenticate,createInterview)
 router.get("/",authenticate,getAllInterviews)
 router.get("/:id",authenticate,getInterviewById)
-// router.post("/updateUser",authenticate,updateUser);
-// router.get("/",authenticate,);
-// router.get("/:id",authenticate,getTicket)
+
 
 export default router;

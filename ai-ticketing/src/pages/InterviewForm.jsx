@@ -260,7 +260,7 @@ const InterviewForm = () => {
       {/* Success Message */}
       {interview && (
         <div className="mt-4 p-3 bg-green-100 dark:bg-green-900 border border-green-400 dark:border-green-600 text-green-700 dark:text-green-300 rounded">
-          <p className="text-sm">✅ Interview generated successfully! You can now start the interview.</p>
+          <p className="text-sm"> Interview generated successfully! You can now start the interview.</p>
         </div>
       )}
     </div>
