@@ -1,11 +1,56 @@
 import { createAgent, gemini } from "@inngest/agent-kit";
-import { prompt, evaluationPrompt } from "./prompt.js";
+import Groq from "groq-sdk";
+import { prompt, evaluationPrompt, combinedPrompt, batchQuestionPrompt, batchEvaluationPrompt } from "./prompt.js";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-if (!process.env.GEMINI_API_KEY) {
-  throw new Error("GEMINI_API_KEY missing");
+/* ─────────────────────────────
+   PROVIDER SELECTION
+───────────────────────────── */
+
+const USE_GROQ = !!process.env.GROQ_API_KEY;
+
+if (USE_GROQ) {
+  console.log("🚀 Using Groq (unlimited free tier)");
+} else {
+  console.log("🔑 Using Gemini (limited free tier)");
+}
+
+/* ─────────────────────────────
+   GROQ CLIENT
+───────────────────────────── */
+
+let groqClient;
+if (USE_GROQ) {
+  groqClient = new Groq({
+    apiKey: process.env.GROQ_API_KEY
+  });
+}
+
+/* ─────────────────────────────
+   MULTI-KEY ROTATION (GEMINI)
+───────────────────────────── */
+
+const API_KEYS = process.env.GEMINI_API_KEYS 
+  ? process.env.GEMINI_API_KEYS.split(',').map(k => k.trim())
+  : [process.env.GEMINI_API_KEY];
+
+if (!USE_GROQ && (!API_KEYS.length || !API_KEYS[0])) {
+  throw new Error("GEMINI_API_KEY or GEMINI_API_KEYS missing");
+}
+
+let currentKeyIndex = 0;
+
+function getNextApiKey() {
+  const key = API_KEYS[currentKeyIndex];
+  currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+  console.log(`🔑 Using Gemini API key ${currentKeyIndex + 1}/${API_KEYS.length}`);
+  return key;
+}
+
+if (!USE_GROQ) {
+  console.log(`✅ Loaded ${API_KEYS.length} Gemini API key(s)`);
 }
 
 /* ─────────────────────────────
@@ -41,57 +86,64 @@ function releaseSlot() {
 }
 
 /* ─────────────────────────────
-   APPLY RATE LIMIT (SAFE)
+   BASE AGENTS WITH KEY ROTATION
 ───────────────────────────── */
 
-function applyRateLimit(agent, name) {
-  if (typeof agent.run !== "function") {
-    throw new Error(`${name} has no run() method`);
+// Wrapper that creates fresh agent with next API key on each call
+class RotatingAgent {
+  constructor(name, systemPrompt) {
+    this.name = name;
+    this.systemPrompt = systemPrompt;
   }
 
-  const originalRun = agent.run.bind(agent);
-
-  agent.run = async (input, options) => {
+  async run(input, options) {
     await acquireSlot();
+    
     try {
-      return await originalRun(input, options);
+      if (USE_GROQ) {
+        // Use Groq (unlimited free tier)
+        const completion = await groqClient.chat.completions.create({
+          messages: [
+            { role: "system", content: this.systemPrompt },
+            { role: "user", content: input.input?.instruction || input.instruction }
+          ],
+          model: "llama-3.3-70b-versatile",
+          temperature: 0.7,
+          max_tokens: 2048,
+        });
+
+        return {
+          output: [{
+            content: completion.choices[0].message.content
+          }]
+        };
+      } else {
+        // Use Gemini (limited free tier)
+        const apiKey = getNextApiKey();
+        const agent = createAgent({
+          name: this.name,
+          system: this.systemPrompt,
+          model: gemini({
+            model: "gemini-2.5-flash",
+            apiKey: apiKey,
+          }),
+        });
+
+        return await agent.run(input, options);
+      }
     } catch (err) {
-      console.error(`❌ ${name} failed:`, err?.message || err);
+      console.error(`❌ ${this.name} failed:`, err?.message || err);
       throw err;
     } finally {
       releaseSlot();
     }
-  };
-
-  return agent;
+  }
 }
 
-/* ─────────────────────────────
-   BASE AGENTS
-───────────────────────────── */
+const interviewAgent = new RotatingAgent("Interview Agent", prompt);
+const interviewEvaluationAgent = new RotatingAgent("Interview Evaluation Agent", evaluationPrompt);
+const combinedAgent = new RotatingAgent("Combined Interview Agent", combinedPrompt);
+const batchQuestionAgent = new RotatingAgent("Batch Question Generator", batchQuestionPrompt);
+const batchEvaluationAgent = new RotatingAgent("Batch Evaluation Agent", batchEvaluationPrompt);
 
-const interviewAgent = applyRateLimit(
-  createAgent({
-    name: "Interview Agent",
-    system: prompt,
-    model: gemini({
-      model: "gemini-2.5-flash",
-      apiKey: process.env.GEMINI_API_KEY,
-    }),
-  }),
-  "InterviewAgent"
-);
-
-const interviewEvaluationAgent = applyRateLimit(
-  createAgent({
-    name: "Interview Evaluation Agent",
-    system: evaluationPrompt,
-    model: gemini({
-      model: "gemini-2.5-flash",
-      apiKey: process.env.GEMINI_API_KEY,
-    }),
-  }),
-  "InterviewEvaluationAgent"
-);
-
-export { interviewAgent, interviewEvaluationAgent };
+export { interviewAgent, interviewEvaluationAgent, combinedAgent, batchQuestionAgent, batchEvaluationAgent };

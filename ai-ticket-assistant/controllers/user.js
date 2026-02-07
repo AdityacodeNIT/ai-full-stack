@@ -1,123 +1,120 @@
-import bcrypt from 'bcrypt'
-import jwt from "jsonwebtoken";
-import User from "../models/user.model.js"
-import { inngest } from '../inngest/client.js'
+import express from "express"
+import User from "../models/user.model.js";
+import { clerkClient, getAuth, requireAuth } from "@clerk/express";
+import { attachClerkUserId } from "../middleware/clerkAuth.js";
 
-export const signup = async (req, res) => {
-  let { email, password, skills = [] } = req.body;
+const router = express.Router();
 
+/* ─────────────────────────────
+   WebSocket Token Endpoint
+───────────────────────────── */
+router.get("/ws-token", requireAuth(), async (req, res) => {
   try {
-    // Ensure skills are in correct object format
-    skills = skills.map(skill =>
-      typeof skill === "string"
-        ? { name: skill, proficiency: 1 }
-        : skill
-    );
-
-    // 🔥 DO NOT HASH HERE
-    const user = await User.create({
-      email,
-      password, // plain password → model will hash it
-      skills
+    console.log("🔑 WS token request received");
+    
+    const auth = getAuth(req);
+    console.log("Auth object:", { 
+      userId: auth.userId, 
+      sessionId: auth.sessionId,
+      hasGetToken: typeof auth.getToken === 'function'
     });
-
-    await inngest.send({
-      name: "user/signup",
-      data: { email }
-    });
-
-    const token = jwt.sign(
-      { _id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    // Remove password before sending response
-    const userResponse = user.toObject();
-    delete userResponse.password;
-
-    if (process.env.NODE_ENV === "production") {
-      return res.status(201).json({
-        user: userResponse,
-        token,
-        message: "Signup successful",
-      });
+    
+    const { userId, getToken } = auth;
+    
+    if (!userId) {
+      console.error("❌ No userId in auth");
+      return res.status(401).json({ error: "No authenticated user" });
     }
 
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    // Get the session token directly from the request
+    const token = await getToken();
+    
+    if (!token) {
+      console.error("❌ No token returned from getToken()");
+      return res.status(401).json({ error: "No session token available" });
+    }
 
-    res.status(201).json({
-      user: userResponse,
-      message: "Signup successful",
+    console.log("✅ Token generated successfully for user:", userId);
+    
+    // Return the JWT token
+    res.json({ 
+      token,
+      userId 
     });
-
   } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      message: "signup_failed",
+    console.error("❌ WS token error:", error);
+    res.status(500).json({ 
+      error: "Failed to generate WebSocket token",
       details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
-};
+});
 
-
-
-export const login = async (req, res) => {
-  const { email, password } = req.body;
-
-  const user = await User.findOne({ email }).select("+password");
-  if (!user) {
-    return res.status(401).json({ message: "Invalid credentials" });
-  }
-
-  const isMatch = await user.comparePassword(password);
-  if (!isMatch) {
-    return res.status(401).json({ message: "Invalid credentials" });
-  }
-
-  res.status(200).json({ message: "Login successful" });
-};
-
-
-export const logout = async (req, res) => {
+/* ─────────────────────────────
+   Get Current User Info
+───────────────────────────── */
+router.get("/me", requireAuth(), attachClerkUserId, async (req, res) => {
   try {
-    // Clear the HTTP-only cookie
-    res.clearCookie('token', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax'
+    const { userId } = getAuth(req);
+    
+    // Get Clerk user data
+    const clerkUser = await clerkClient.users.getUser(userId);
+    
+    // Get MongoDB user data (if exists)
+    let dbUser = await User.findOne({ clerkUserId: userId });
+    
+    // Create user in DB if doesn't exist
+    if (!dbUser) {
+      dbUser = await User.create({
+        clerkUserId: userId,
+        email: clerkUser.emailAddresses[0]?.emailAddress,
+        role: clerkUser.publicMetadata?.role || "user",
+        skills: [],
+      });
+    }
+    
+    res.json({
+      user: {
+        id: userId,
+        email: clerkUser.emailAddresses[0]?.emailAddress,
+        role: clerkUser.publicMetadata?.role || dbUser.role,
+        skills: dbUser.skills,
+      },
+      authenticated: true,
     });
-
-    res.json({ message: "User logged out successfully" });
   } catch (error) {
-    res.status(500).json({
-      error: "logout_failed",
-      details: error.message
-    })
+    console.error("Get user error:", error);
+    res.status(500).json({ error: "Failed to fetch user data" });
   }
-}
-export const updateUser = async (req, res) => {
-  let { skills = [], role, email } = req.body;
+});
 
+/* ─────────────────────────────
+   Update User (ADMIN ONLY)
+───────────────────────────── */
+export const updateUser = async (req, res) => {
   try {
-    if (req.user?.role !== "admin") {
+    const { userId } = getAuth(req);
+
+    // Get logged-in Clerk user
+    const clerkUser = await clerkClient.users.getUser(userId);
+
+    // Admin check
+    if (clerkUser.publicMetadata?.role !== "admin") {
       return res.status(403).json({ error: "forbidden" });
     }
 
+    let { skills = [], role, email } = req.body;
+
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(401).json({ error: "user not found" });
+      return res.status(404).json({ error: "user not found" });
     }
 
-    // Ensure skills are stored in correct object format
+    // Normalize skills
     skills = skills.map(skill =>
       typeof skill === "string"
-        ? { name: skill, proficiency: 1 } // Default proficiency for new skills
+        ? { name: skill, proficiency: 1 }
         : skill
     );
 
@@ -125,7 +122,7 @@ export const updateUser = async (req, res) => {
       { email },
       {
         skills: skills.length ? skills : user.skills,
-        role: role ?? user.role
+        role: role ?? user.role,
       }
     );
 
@@ -133,25 +130,36 @@ export const updateUser = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       error: "update_failed",
-      details: error.message
+      details: error.message,
     });
   }
 };
 
-
-
+/* ─────────────────────────────
+   Get All Users (ADMIN ONLY)
+───────────────────────────── */
 export const getUser = async (req, res) => {
   try {
-    if (req.user?.role !== "admin") {
-      return res.status(403).json({ error: forbidden });
+    const { userId } = getAuth(req);
+
+    const clerkUser = await clerkClient.users.getUser(userId);
+
+    if (clerkUser.publicMetadata?.role !== "admin") {
+      return res.status(403).json({ error: "forbidden" });
     }
-    const users = await User.find().select("-password");
-    console.log(users)
+
+    const users = await User.find();
+
     return res.json(users);
   } catch (error) {
     res.status(500).json({
       error: "users_not_found",
-      details: error.message
-    })
+      details: error.message,
+    });
   }
-}
+};
+
+router.post("/updateUser", requireAuth(), updateUser);
+router.get("/getusers", requireAuth(), getUser);
+
+export default router;

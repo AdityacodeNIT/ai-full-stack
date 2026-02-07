@@ -1,7 +1,7 @@
 // InterviewForm.jsx
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { generateInterview, clearInterview } from '../features/interview/interview';
+import { generateInterview, clearInterview } from '../../features/interview/interview';
 
 const InterviewForm = () => {
   const [formData, setFormData] = useState({

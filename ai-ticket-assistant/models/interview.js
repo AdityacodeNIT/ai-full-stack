@@ -30,11 +30,10 @@ const interviewSchema = new Schema(
       min: 1,
     },
     userId: {
-      // Assuming this is the user who initiated/created the interview
-      type: Schema.Types.ObjectId,
-      ref: "User",
-      required: true, // If every interview must be tied to a user
-      default: null, // You can remove default:null if required:true
+      // ✅ Clerk userId (string like "user_xxx")
+      type: String,
+      required: true,
+      index: true,
     },
     status: {
       type: String,

@@ -179,31 +179,39 @@ class AssemblySocketHandler {
     }
   }
 }
+
 // ---------------------------
 // Create Assembly WS
 // ---------------------------
-export const createAssemblySocket = (getInterviewWS) => {
+export const createAssemblySocket = () => {
   if (!process.env.ASSEMBLYAI_API_KEY) throw new Error("Missing API key");
 
   const wss = new WebSocketServer({ noServer: true });
 
   wss.on("connection", (ws, req) => {
-    const userId = req.user._id;
-    const interviewRecord = getInterviewWS(userId);
-
-    if (!interviewRecord) {
-      console.error("No active interview found for user", userId);
+    // ✅ Use Clerk userId (attached in index.js upgrade handler)
+    const userId = req.clerkUserId;
+    
+    if (!userId) {
+      console.error("❌ No Clerk userId found in Assembly WS connection");
       ws.close();
       return;
     }
 
-    const { ws: interviewWS, handler: interviewHandler } = interviewRecord;
+    // Get the interview handler for this user
+    const handler = getHandler(userId);
+    
+    if (!handler) {
+      console.error("❌ No active interview handler found for user", userId);
+      ws.close();
+      return;
+    }
 
-    // Pass both frontend WS and backend handler
-    const handler = new AssemblySocketHandler(userId, interviewWS, interviewHandler);
-    handler.ws = ws;
+    // Create Assembly handler
+    const assemblyHandler = new AssemblySocketHandler(userId, handler.ws, handler);
+    assemblyHandler.ws = ws;
 
-    handler.initializeTranscriber()
+    assemblyHandler.initializeTranscriber()
       .then(() => {
         if (ws.readyState === 1)
           ws.send(JSON.stringify({ type: "connection", status: "connected" }));
@@ -213,22 +221,22 @@ export const createAssemblySocket = (getInterviewWS) => {
           ws.send(JSON.stringify({ type: "error", message: "Init failed" }));
       });
 
-    ws.on("close", async () => await handler.close());
-    ws.on("error", async () => await handler.close());
+    ws.on("close", async () => await assemblyHandler.close());
+    ws.on("error", async () => await assemblyHandler.close());
 
     ws.on("message", (msg) => {
       try {
         const parsed = JSON.parse(msg.toString());
         if (parsed.type === "tts_start") {
-          handler.setTTSPlaying(true);
+          assemblyHandler.setTTSPlaying(true);
         } else if (parsed.type === "tts_end") {
-          handler.setTTSPlaying(false);
+          assemblyHandler.setTTSPlaying(false);
         } else if (parsed.audioData) {
-          handler.sendAudio(parsed.audioData);
+          assemblyHandler.sendAudio(parsed.audioData);
         }
       } catch {
         // Assume it's raw audio data
-        handler.sendAudio(msg);
+        assemblyHandler.sendAudio(msg);
       }
     });
   });

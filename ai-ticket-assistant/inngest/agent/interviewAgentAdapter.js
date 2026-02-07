@@ -1,9 +1,14 @@
-import { interviewAgent, interviewEvaluationAgent } from "./interviewAgent.js";
+import { interviewAgent, interviewEvaluationAgent, combinedAgent, batchQuestionAgent, batchEvaluationAgent } from "./interviewAgent.js";
 
 export class InterviewAgentAdapter {
   constructor(context) {
     this.context = context; // role, level, techstack, focus, maxQuestions
     this.history = [];
+    this.mode = "batch"; // "batch" or "adaptive"
+    this.preGeneratedQuestions = [];
+    this.currentQuestionIndex = 0;
+    this.retryCount = 0;
+    this.maxRetries = 3;
   }
 
   /* ─────────────────────────────
@@ -25,112 +30,303 @@ INTERVIEW CONTEXT:
 
   extractJson(agentResult) {
     const text = agentResult?.output?.[0]?.content;
-    if (!text) return null;
+    if (!text) {
+      console.error("❌ No content in agent result");
+      return null;
+    }
 
     try {
-      return JSON.parse(
-        text.replace(/```json|```/g, "").trim()
-      );
+      // Remove markdown code blocks
+      let cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "");
+      
+      // Try to find JSON object in the text
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        console.log("✅ Successfully parsed JSON response");
+        return parsed;
+      }
+      
+      // If no match, try parsing the whole thing
+      const parsed = JSON.parse(cleaned.trim());
+      console.log("✅ Successfully parsed JSON response");
+      return parsed;
     } catch (err) {
-      console.error("JSON parse failed:", text);
+      console.error("❌ JSON parse failed:", err.message);
+      console.error("Raw text:", text?.substring(0, 200));
       return null;
     }
   }
 
+  async retryWithBackoff(fn, context) {
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        console.log(`🔄 Attempt ${attempt}/${this.maxRetries}: ${context}`);
+        const result = await fn();
+        return result;
+      } catch (err) {
+        console.error(`❌ Attempt ${attempt} failed:`, err.message);
+        
+        if (attempt === this.maxRetries) {
+          throw new Error(`Failed after ${this.maxRetries} attempts: ${err.message}`);
+        }
+        
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.pow(2, attempt - 1) * 1000;
+        console.log(`⏳ Waiting ${delay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
   /* ─────────────────────────────
-     Interview flow
+     BATCH MODE: Generate all questions upfront
+  ───────────────────────────── */
+
+  async generateAllQuestions() {
+    const { level, maxQuestions, role, techstack } = this.context;
+    
+    console.log(`📝 Generating ${maxQuestions} ${level}-level questions for ${role}...`);
+    
+    const generateFn = async () => {
+      const res = await batchQuestionAgent.run({
+        input: {
+          instruction: `
+${this.buildContextText()}
+
+IMPORTANT: The candidate is applying for a ${role} position at the ${level} experience level.
+
+Generate exactly ${maxQuestions} high-quality interview questions that:
+1. Match the ${level} experience level precisely
+2. Are specific to ${role} and ${Array.isArray(techstack) ? techstack.join(", ") : techstack}
+3. Cover different aspects: technical depth, problem-solving, experience, collaboration
+4. Are clear, specific, and open-ended
+5. Progress in complexity within the ${level} level
+
+Return STRICT JSON only:
+{
+  "questions": [
+    {
+      "question": "Clear, specific question text",
+      "focus": "technical|problem-solving|experience|soft-skills",
+      "expectedDepth": "basic|intermediate|advanced"
+    }
+  ]
+}
+        `.trim(),
+        },
+      });
+
+      const result = this.extractJson(res);
+      
+      if (!result?.questions || !Array.isArray(result.questions)) {
+        throw new Error("Invalid response format: missing questions array");
+      }
+
+      if (result.questions.length !== maxQuestions) {
+        console.warn(`⚠️ Expected ${maxQuestions} questions, got ${result.questions.length}`);
+      }
+
+      return result;
+    };
+
+    const result = await this.retryWithBackoff(generateFn, "Generating questions");
+    
+    this.preGeneratedQuestions = result.questions;
+    console.log(`✅ Generated ${this.preGeneratedQuestions.length} questions successfully`);
+    
+    // Log first question as preview
+    if (this.preGeneratedQuestions.length > 0) {
+      console.log(`📋 First question: ${this.preGeneratedQuestions[0].question.substring(0, 80)}...`);
+    }
+    
+    return this.preGeneratedQuestions;
+  }
+
+  getNextQuestion() {
+    if (this.currentQuestionIndex >= this.preGeneratedQuestions.length) {
+      console.log("✅ All questions have been asked");
+      return null;
+    }
+    
+    const question = this.preGeneratedQuestions[this.currentQuestionIndex];
+    this.currentQuestionIndex++;
+    
+    console.log(`📤 Sending question ${this.currentQuestionIndex}/${this.preGeneratedQuestions.length}`);
+    
+    return {
+      question: question.question,
+      focus: question.focus,
+      expectedDepth: question.expectedDepth,
+      questionNumber: this.currentQuestionIndex
+    };
+  }
+
+  /* ─────────────────────────────
+     Interview flow (BATCH MODE)
   ───────────────────────────── */
 
   async generateOpeningQuestion() {
-    const res = await interviewAgent.run({
-      input: {
-        instruction: `
-${this.buildContextText()}
-
-Ask the first interview question.
-
-Return STRICT JSON only:
-{
-  "question": string,
-  "reason": string,
-  "shouldEnd": boolean
-}
-        `.trim(),
-      },
-    });
-
-    return this.extractJson(res);
+    try {
+      // Generate all questions upfront
+      await this.generateAllQuestions();
+      
+      // Return first question
+      const firstQ = this.getNextQuestion();
+      
+      if (!firstQ) {
+        throw new Error("No questions generated");
+      }
+      
+      return {
+        question: firstQ.question,
+        reason: `Starting interview with ${firstQ.focus} question (${firstQ.expectedDepth} depth)`,
+        shouldEnd: false
+      };
+    } catch (err) {
+      console.error("❌ Failed to generate opening question:", err);
+      throw new Error(`Interview initialization failed: ${err.message}`);
+    }
   }
+
+  /* ─────────────────────────────
+     Store answer (NO API call)
+  ───────────────────────────── */
 
   async processAnswer({ question, answer }) {
-    console.log("Processing answer for question:", question,answer);
-    // 1️⃣ Evaluate answer
-    const evalRes = await interviewEvaluationAgent.run({
-      input: {
-        instruction: `
-QUESTION:
-${question}
-
-ANSWER:
-${answer}
-
-Evaluate the answer.
-
-Return STRICT JSON only.
-        `.trim(),
-      },
-    });
-
-    const evaluation = this.extractJson(evalRes);
-
+    console.log(`📥 Storing answer ${this.history.length + 1} (${answer.length} characters)`);
+    
+    // Validate answer
+    if (!answer || answer.trim().length < 10) {
+      console.warn("⚠️ Answer is very short");
+    }
+    
+    // Just store the answer, no AI evaluation yet
     this.history.push({
       question,
-      answer,
-      evaluation,
+      answer: answer.trim(),
+      timestamp: new Date(),
+      questionNumber: this.history.length + 1
     });
 
-    // 2️⃣ Decide next question
-    const nextRes = await interviewAgent.run({
-      input: {
-        instruction: `
-${this.buildContextText()}
+    // Get next question from pre-generated list
+    const nextQ = this.getNextQuestion();
+    
+    if (!nextQ) {
+      // No more questions, end interview
+      console.log("✅ All questions answered, preparing for final evaluation");
+      return {
+        evaluation: null, // Will evaluate all at the end
+        decision: {
+          shouldEnd: true,
+          question: null,
+          reason: "All questions completed"
+        }
+      };
+    }
 
-INTERVIEW HISTORY:
-${JSON.stringify(this.history, null, 2)}
-
-Ask the next best interview question.
-
-Return STRICT JSON only:
-{
-  "question": string | null,
-  "reason": string,
-  "shouldEnd": boolean
-}
-        `.trim(),
-      },
-    });
-
-    const decision = this.extractJson(nextRes);
-
-    return { evaluation, decision };
+    // Return next question without evaluation
+    return {
+      evaluation: null, // Will evaluate all at the end
+      decision: {
+        shouldEnd: false,
+        question: nextQ.question,
+        reason: `Next ${nextQ.focus} question (${nextQ.expectedDepth} depth)`
+      }
+    };
   }
 
+  /* ─────────────────────────────
+     Batch evaluation at the end (ONE API call)
+  ───────────────────────────── */
+
   async summarizeInterview() {
-    const res = await interviewAgent.run({
-      input: {
-        instruction: `
+    console.log(`🎯 Evaluating complete interview (${this.history.length} Q&A pairs)...`);
+    
+    const evaluateFn = async () => {
+      const res = await batchEvaluationAgent.run({
+        input: {
+          instruction: `
 ${this.buildContextText()}
 
-INTERVIEW HISTORY:
+COMPLETE INTERVIEW TRANSCRIPT:
 ${JSON.stringify(this.history, null, 2)}
 
-Summarize the interview and assess the candidate.
+Evaluate the entire interview comprehensively and provide detailed, actionable feedback.
 
-Return STRICT JSON only.
+Consider:
+- The candidate's experience level (${this.context.level})
+- Technical depth appropriate for ${this.context.role}
+- Communication clarity
+- Problem-solving approach
+- Growth potential
+
+CRITICAL: You MUST include ALL required fields:
+- overallScore (number)
+- overallSummary (detailed string)
+- strengths (array of 3 specific strings with examples)
+- areasForImprovement (array of 2 specific strings with actionable advice)
+- technicalScore (number)
+- problemSolvingScore (number)
+- communicationScore (number)
+- questionEvaluations (array with evaluation for EACH question)
+- recommendation (one of: "Strong Hire", "Hire", "Maybe", "Pass")
+- recommendationReason (detailed string explaining why)
+- nextSteps (specific actionable string)
+
+Return STRICT JSON only with ALL fields populated.
         `.trim(),
-      },
-    });
+        },
+      });
 
-    return this.extractJson(res);
+      const result = this.extractJson(res);
+      
+      if (!result) {
+        throw new Error("Failed to parse evaluation response");
+      }
+
+      // Validate required fields
+      const requiredFields = [
+        'overallScore', 'overallSummary', 'strengths', 'areasForImprovement',
+        'technicalScore', 'problemSolvingScore', 'communicationScore',
+        'questionEvaluations', 'recommendation', 'recommendationReason', 'nextSteps'
+      ];
+
+      const missingFields = requiredFields.filter(field => !(field in result));
+      
+      if (missingFields.length > 0) {
+        console.warn(`⚠️ Missing fields in evaluation: ${missingFields.join(', ')}`);
+        console.warn('Raw result:', JSON.stringify(result, null, 2));
+      }
+
+      // Validate data types
+      if (typeof result.overallScore !== 'number') {
+        console.warn('⚠️ overallScore is not a number:', result.overallScore);
+      }
+      if (!Array.isArray(result.strengths)) {
+        console.warn('⚠️ strengths is not an array:', result.strengths);
+      }
+      if (!Array.isArray(result.areasForImprovement)) {
+        console.warn('⚠️ areasForImprovement is not an array:', result.areasForImprovement);
+      }
+      if (!Array.isArray(result.questionEvaluations)) {
+        console.warn('⚠️ questionEvaluations is not an array:', result.questionEvaluations);
+      }
+
+      console.log('✅ Evaluation validation passed');
+      console.log(`📊 Scores - Overall: ${result.overallScore}, Technical: ${result.technicalScore}, Problem-Solving: ${result.problemSolvingScore}, Communication: ${result.communicationScore}`);
+      console.log(`💪 Strengths: ${result.strengths?.length || 0} items`);
+      console.log(`📈 Areas for improvement: ${result.areasForImprovement?.length || 0} items`);
+
+      return result;
+    };
+
+    const result = await this.retryWithBackoff(evaluateFn, "Evaluating interview");
+    
+    console.log(`✅ Evaluation complete - Overall score: ${result.overallScore}/100`);
+    console.log(`📊 Recommendation: ${result.recommendation}`);
+    console.log(`💡 Reason: ${result.recommendationReason?.substring(0, 100)}...`);
+    
+    return result;
   }
 }

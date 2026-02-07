@@ -1,8 +1,14 @@
 import mongoose, { Schema } from "mongoose";
-import bcrypt from "bcrypt";
 
 const userSchema = new Schema(
   {
+    clerkUserId: {
+      type: String,
+      unique: true,
+      sparse: true, // Allow null during migration
+      index: true,
+    },
+
     email: {
       type: String,
       required: true,
@@ -13,9 +19,9 @@ const userSchema = new Schema(
 
     password: {
       type: String,
-      required: true,
+      required: false, // Optional for Clerk users
       minlength: 6,
-      select: false, // 🔥 never return password by default
+      select: false,
     },
 
     role: {
@@ -33,25 +39,5 @@ const userSchema = new Schema(
   },
   { timestamps: true }
 );
-
-
-// 🔐 HASH PASSWORD BEFORE SAVE
-userSchema.pre("save", async function (next) {
-  // Only hash if password is new or modified
-  if (!this.isModified("password")) return next();
-
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error);
-  }
-});
-
-
-userSchema.methods.comparePassword = async function (enteredPassword) {
-  return bcrypt.compare(enteredPassword, this.password);
-};
 
 export default mongoose.model("User", userSchema);

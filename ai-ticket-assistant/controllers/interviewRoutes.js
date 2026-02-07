@@ -6,10 +6,20 @@ import Interview from "../models/interview.js";
 export const createInterview = async (req, res) => {
   const { type, role, level, techstack, amount } = req.body;
 
+  console.log("📝 Creating interview for user:", req.clerkUserId);
+
   if (!role || !level || !amount) {
     return res.status(400).json({
       success: false,
       message: "Missing required parameters",
+    });
+  }
+
+  if (!req.clerkUserId) {
+    console.error("❌ No clerkUserId in request!");
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized - no user ID",
     });
   }
 
@@ -22,8 +32,18 @@ export const createInterview = async (req, res) => {
         ? techstack.split(",").map(s => s.trim())
         : [],
       numberOfQuestions: amount,
-      userId: req.user._id,
+
+      // 🔑 Clerk user ID instead of JWT user
+      userId: req.clerkUserId,
+
       status: "created",
+    });
+
+    console.log("✅ Interview created:", {
+      id: interview._id,
+      userId: interview.userId,
+      role: interview.role,
+      level: interview.level
     });
 
     return res.status(200).json({
@@ -32,7 +52,7 @@ export const createInterview = async (req, res) => {
       interview,
     });
   } catch (error) {
-    console.error("Create interview error:", error);
+    console.error("❌ Create interview error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to create interview",
@@ -47,7 +67,7 @@ export const createInterview = async (req, res) => {
 export const getAllInterviews = async (req, res) => {
   try {
     const interviews = await Interview.find({
-      userId: req.user._id,
+      userId: req.clerkUserId,
     }).sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -72,7 +92,7 @@ export const getInterviewById = async (req, res) => {
 
     const interview = await Interview.findOne({
       _id: id,
-      userId: req.user._id,
+      userId: req.clerkUserId,
     });
 
     if (!interview) {

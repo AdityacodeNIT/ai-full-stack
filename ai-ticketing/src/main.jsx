@@ -2,104 +2,91 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 
-import Tickets from "./pages/tickets.jsx";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-import Ticket from "./pages/ticket.jsx";
-import Login from "./pages/login.jsx";
-import Signup from "./pages/signup.jsx";
+import Home from "./pages/Home.jsx";
 import Admin from "./pages/admin.jsx";
-import CheckAuth from "./components/checkAuth.jsx";
 import Navbar from "./components/navbar.jsx";
 import InterviewPage from "./pages/interviewPage.jsx";
 import PastInterviews from "./pages/PastInterviews.jsx";
-import { Provider } from "react-redux";
-import { store,persistor } from "./redux/reduxStore.jsx";
-import { PersistGate } from "redux-persist/integration/react";
 import VapiinterviewPage from "./pages/VapiinterviewPage.jsx";
 
+import { Provider } from "react-redux";
+import { store, persistor } from "./redux/reduxStore.jsx";
+import { PersistGate } from "redux-persist/integration/react";
+
+import { ClerkProvider } from "@clerk/clerk-react";
+import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import ClerkApiSetup from "./components/ClerkApiSetup.jsx";
+
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+if (!PUBLISHABLE_KEY) {
+  throw new Error("Add your Clerk Publishable Key to the .env file");
+}
+
 createRoot(document.getElementById("root")).render(
+  // Temporarily disabled StrictMode to avoid double WebSocket connections
   // <StrictMode>
-  <Provider store={store}>
+    <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+      <ClerkApiSetup>
+        <Provider store={store}>
+          <PersistGate loading={null} persistor={persistor}>
+            <BrowserRouter>
+              <Navbar />
 
-   <PersistGate loading={null} persistor={persistor}>
+            <Routes>
+              {/* Public */}
+              <Route path="/aiInterview" element={<VapiinterviewPage />} />
 
-    <BrowserRouter>
-    <Navbar/>
-      <Routes><Route
-  path="/"
-  element={
-    <CheckAuth protectedRoute={true}>
-      <Tickets />
-    </CheckAuth>
-  }
-/>
+              {/* Protected */}
+              <Route
+                path="/"
+                element={
+                    <Home />
+                }
+              />
 
-<Route
-  path="/ticket/:id"
-  element={
-    <CheckAuth protectedRoute={true}>
-      <Ticket />
-    </CheckAuth>
-  }
-/>
+              <Route
+                path="/interview"
+                element={
+                  <ProtectedRoute>
+                    <InterviewPage />
+                  </ProtectedRoute>
+                }
+              />
 
-<Route
-  path="/login"
-  element={
-    <CheckAuth protectedRoute={false}>
-      <Login />
-    </CheckAuth>
-  }
-/>
+              <Route
+                path="/interviews"
+                element={
+                  <ProtectedRoute>
+                    <PastInterviews />
+                  </ProtectedRoute>
+                }
+              />
 
-<Route
-  path="/signup"
-  element={
-    <CheckAuth protectedRoute={false}>
-      <Signup />
-    </CheckAuth>
-  }
-/>
+              <Route
+                path="/interviews/:id"
+                element={
+                  <ProtectedRoute>
+                    <div>Interview Details Page</div>
+                  </ProtectedRoute>
+                }
+              />
 
-<Route
-  path="/admin"
-  element={
-    <CheckAuth protectedRoute={true}>
-      <Admin />
-    </CheckAuth>
-  }
-/>
-<Route
-  path="/interview"
-  element={
-    <CheckAuth protectedRoute={true}>
-      <InterviewPage/>
-    </CheckAuth>
-  }
-/>
-<Route
-  path="/interviews"
-  element={
-    <CheckAuth protectedRoute={true}>
-      <PastInterviews />
-    </CheckAuth>
-  }
-/>
-<Route
-  path="/interviews/:id"
-  element={
-    <CheckAuth protectedRoute={true}>
-      <div>Interview Details Page</div>
-    </CheckAuth>
-  }
-/>
-<Route path="/aiInterview"
-element={<VapiinterviewPage/>}/>
-
-      </Routes>
-    </BrowserRouter>
-       </PersistGate>
-  </Provider>
-  //</StrictMode>
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute>
+                    <Admin />
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </BrowserRouter>
+        </PersistGate>
+      </Provider>
+      </ClerkApiSetup>
+    </ClerkProvider>
+  // </StrictMode>
 );
