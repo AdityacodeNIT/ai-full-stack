@@ -99,10 +99,18 @@ server.on("upgrade", async (req, socket, head) => {
 // ------------------------------
 // Express middlewares
 // ------------------------------
-const allowedOrigins =
-  process.env.NODE_ENV === "production"
-    ? [process.env.FRONTEND_URL, process.env.CORS_ORIGIN].filter(Boolean)
-    : process.env.CORS_ORIGIN?.split(",").map(o => o.trim());
+const allowedOrigins = (() => {
+  if (process.env.NODE_ENV === "production") {
+    return [
+      process.env.FRONTEND_URL,
+      process.env.CORS_ORIGIN
+    ].filter(Boolean);
+  }
+
+  return process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(",").map(o => o.trim())
+    : [];
+})();
 
 app.use(
   cors({
