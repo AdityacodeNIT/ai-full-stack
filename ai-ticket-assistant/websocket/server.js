@@ -107,6 +107,15 @@ export function setupInterviewSocket() {
               await handler.handleResponse(data);
               break;
 
+            case "proctoring_violation":
+              if (!data.violationType) {
+                console.error("❌ Proctoring violation missing type");
+                return;
+              }
+              console.log("🚨 Proctoring violation:", data.violationType);
+              await handler.handleProctoringViolation(data);
+              break;
+
             default:
               console.warn("⚠️ Unknown message type:", data.type);
               handler.sendError("Unknown message type.");

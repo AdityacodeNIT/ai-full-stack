@@ -1,13 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { getWebSocketToken } from '../../utils/websocket';
+import { useAuth } from '@clerk/clerk-react';
 
 /**
  * Handles interview WebSocket lifecycle and message routing
  */
 export function useInterviewSocket(interviewId, handlers = {}) {
+  const { getToken } = useAuth();
   const wsRef = useRef(null);
   const initializedRef = useRef(false);
+  const handlersRef = useRef(handlers);
   const [status, setStatus] = useState('disconnected');
+
+  // Update handlers ref when handlers change
+  useEffect(() => {
+    handlersRef.current = handlers;
+  }, [handlers]);
 
   useEffect(() => {
     if (initializedRef.current) return;
@@ -18,7 +25,7 @@ export function useInterviewSocket(interviewId, handlers = {}) {
 
     const connect = async () => {
       try {
-        const token = await getWebSocketToken();
+        const token = await getToken();
 
         ws = new WebSocket(
           `${import.meta.env.VITE_WS_URL}/ws/interview?token=${token}`
@@ -28,29 +35,37 @@ export function useInterviewSocket(interviewId, handlers = {}) {
 
         ws.onopen = () => {
           if (!mounted) return;
+          console.log('✅ WebSocket connected');
           setStatus('connected');
         };
 
         ws.onmessage = (event) => {
           if (!mounted) return;
 
-          const msg = JSON.parse(event.data);
+          try {
+            const msg = JSON.parse(event.data);
+            console.log('📨 WS message received:', msg.type);
 
-          // Route message by type
-          if (handlers[msg.type]) {
-            handlers[msg.type](msg, ws);
-          } else {
-            console.warn('⚠️ Unhandled WS message:', msg.type);
+            // Route message by type using current handlers
+            if (handlersRef.current[msg.type]) {
+              handlersRef.current[msg.type](msg, ws);
+            } else {
+              console.warn('⚠️ Unhandled WS message:', msg.type);
+            }
+          } catch (err) {
+            console.error('❌ Failed to parse WS message:', err);
           }
         };
 
-        ws.onerror = () => {
+        ws.onerror = (error) => {
           if (!mounted) return;
+          console.error('❌ WebSocket error:', error);
           setStatus('error');
         };
 
         ws.onclose = () => {
           if (!mounted) return;
+          console.log('🔴 WebSocket closed');
           setStatus('disconnected');
         };
       } catch (err) {
@@ -71,7 +86,7 @@ export function useInterviewSocket(interviewId, handlers = {}) {
 
       wsRef.current = null;
     };
-  }, [interviewId]);
+  }, [interviewId, getToken]);
 
   return {
     interviewWS: wsRef,
@@ -79,6 +94,9 @@ export function useInterviewSocket(interviewId, handlers = {}) {
     send: (payload) => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify(payload));
+        console.log('📤 Sent WS message:', payload.type);
+      } else {
+        console.warn('⚠️ Cannot send message, WebSocket not open:', wsRef.current?.readyState);
       }
     },
   };

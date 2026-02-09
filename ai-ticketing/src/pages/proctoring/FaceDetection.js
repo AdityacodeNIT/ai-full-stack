@@ -59,7 +59,6 @@ const FaceDetection = ({ interviewWS }) => {
     startProctoring();
 
     return () => {
-      // 🧹 Cleanup
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());

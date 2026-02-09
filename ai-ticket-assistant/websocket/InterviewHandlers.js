@@ -27,9 +27,13 @@ export class InterviewHandler {
     // Track processed responses to prevent duplicates
     this.processedResponseIds = new Set();
 
+    // Track proctoring violations
+    this.proctoringViolations = [];
+
     this.startInterview = this.startInterview.bind(this);
     this.handleResponse = this.handleResponse.bind(this);
     this.completeInterview = this.completeInterview.bind(this);
+    this.handleProctoringViolation = this.handleProctoringViolation.bind(this);
   }
 
   /* ─────────────────────────────
@@ -272,6 +276,32 @@ export class InterviewHandler {
   }
 
   /* ─────────────────────────────
+     Proctoring violation handler
+  ───────────────────────────── */
+
+  async handleProctoringViolation(data) {
+    try {
+      const violation = {
+        type: data.violationType,
+        timestamp: data.timestamp || Date.now(),
+        questionNumber: this.questionCount,
+        details: data.details || null, // Store additional details (e.g., detected objects)
+      };
+
+      this.proctoringViolations.push(violation);
+      
+      // Enhanced logging for object detection
+      if (data.details?.objects) {
+        console.log(`🚨 Proctoring violation: ${violation.type} - Detected: ${data.details.objects} (Total: ${this.proctoringViolations.length})`);
+      } else {
+        console.log(`🚨 Proctoring violation recorded: ${violation.type} (Total: ${this.proctoringViolations.length})`);
+      }
+    } catch (err) {
+      console.error("❌ handleProctoringViolation failed:", err);
+    }
+  }
+
+  /* ─────────────────────────────
      Interview completion
   ───────────────────────────── */
 
@@ -304,6 +334,7 @@ export class InterviewHandler {
       // Save to database
       this.interviewData.results = this.results;
       this.interviewData.finalReport = finalReport;
+      this.interviewData.proctoringViolations = this.proctoringViolations;
       this.interviewData.status = "completed";
       this.interviewData.completedAt = new Date();
       
@@ -316,6 +347,32 @@ export class InterviewHandler {
       
       await this.interviewData.save();
       console.log("💾 Interview saved to database");
+
+      // 📊 Log proctoring violations summary
+      console.log("\n" + "=".repeat(60));
+      console.log("🔒 PROCTORING VIOLATIONS SUMMARY");
+      console.log("=".repeat(60));
+      if (this.proctoringViolations.length === 0) {
+        console.log("✅ No violations detected - Clean interview");
+      } else {
+        console.log(`⚠️  Total violations: ${this.proctoringViolations.length}`);
+        console.log("\nViolation Details:");
+        this.proctoringViolations.forEach((v, index) => {
+          const time = new Date(v.timestamp).toLocaleTimeString();
+          console.log(`  ${index + 1}. [Q${v.questionNumber}] ${v.type} at ${time}`);
+        });
+        
+        // Breakdown by type
+        const violationTypes = {};
+        this.proctoringViolations.forEach(v => {
+          violationTypes[v.type] = (violationTypes[v.type] || 0) + 1;
+        });
+        console.log("\nBreakdown by Type:");
+        Object.entries(violationTypes).forEach(([type, count]) => {
+          console.log(`  - ${type}: ${count}x`);
+        });
+      }
+      console.log("=".repeat(60) + "\n");
 
       // ✅ Update user skills based on evaluation
       const user = await User.findOne({ clerkUserId: this.userId });

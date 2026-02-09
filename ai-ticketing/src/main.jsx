@@ -7,9 +7,10 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./pages/Home.jsx";
 import Admin from "./pages/admin.jsx";
 import Navbar from "./components/navbar.jsx";
-import InterviewPage from "./pages/interviewPage.jsx";
+import InterviewPage from "./pages/Interview/interviewPage.jsx";
 import PastInterviews from "./pages/PastInterviews.jsx";
 import VapiinterviewPage from "./pages/VapiinterviewPage.jsx";
+
 
 import { Provider } from "react-redux";
 import { store, persistor } from "./redux/reduxStore.jsx";
@@ -38,6 +39,7 @@ createRoot(document.getElementById("root")).render(
             <Routes>
               {/* Public */}
               <Route path="/aiInterview" element={<VapiinterviewPage />} />
+           
 
               {/* Protected */}
               <Route

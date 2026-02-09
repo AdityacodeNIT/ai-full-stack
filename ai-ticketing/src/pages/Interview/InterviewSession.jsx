@@ -1,9 +1,11 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { getWebSocketToken } from '../../utils/websocket.js';
-import FaceDetection from '../proctoring/FaceDetection.js';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useAuth } from '@clerk/clerk-react';
+import FaceDetection from '../proctoring/FaceDetection.jsx';
 import { useInterviewSocket } from './hooks/useInterviewSocket.js';
 
 const InterviewSession = ({ interviewId }) => {
+  const { getToken } = useAuth();
+  
   const [question, setQuestion] = useState('');
   const [analysis, setAnalysis] = useState(null);
   const [transcript, setTranscript] = useState('');
@@ -11,7 +13,6 @@ const InterviewSession = ({ interviewId }) => {
   const [completed, setCompleted] = useState(false);
   const [error, setError] = useState(null);
   const [finalReport, setFinalReport] = useState(null);
-  const [status, setStatus] = useState('disconnected');
   const [qIndex, setQIndex] = useState(0);
   const [total, setTotal] = useState(0);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -21,7 +22,11 @@ const InterviewSession = ({ interviewId }) => {
   const [questionAnalyses, setQuestionAnalyses] = useState([]);
   const [showPreviousAnalyses, setShowPreviousAnalyses] = useState(false);
 
-  const interviewWS = useRef(null);
+  // Video feed refs
+  const userVideoRef = useRef(null);
+  const userVideoStream = useRef(null);
+  const [isVideoReady, setIsVideoReady] = useState(false);
+
   const assemblyWS = useRef(null);
   const audioCtx = useRef(null);
   const workletNode = useRef(null);
@@ -30,7 +35,10 @@ const InterviewSession = ({ interviewId }) => {
   const partial = useRef('');
   const isTranscribingRef = useRef(false);
   const hasSubmittedResponse = useRef(false);
-  const wsInitialized = useRef(false); // Prevent double initialization
+  const sendFnRef = useRef(null); // Store send function for callbacks
+
+
+
 
   useEffect(() => {
     isTranscribingRef.current = isTranscribing;
@@ -88,29 +96,29 @@ const InterviewSession = ({ interviewId }) => {
   );
 
   // --- Submit response to backend ---
-  const submitResponse = useCallback(() => {
+  const submitResponse = useCallback((sendFn) => {
     const currentTranscript = partial.current.trim();
     
-    if (currentTranscript.length > 5 && !hasSubmittedResponse.current && interviewWS.current?.readyState === 1) {
+    if (currentTranscript.length > 5 && !hasSubmittedResponse.current) {
       hasSubmittedResponse.current = true;
       setIsProcessingResponse(true);
       
       console.log('Submitting response:', currentTranscript);
-      interviewWS.current.send(JSON.stringify({
+      sendFn({
         type: 'response',
         response: currentTranscript
-      }));
+      });
     }
   }, []);
 
   // --- Stop transcription ---
-  const stopTranscription = useCallback((shouldSubmit = true) => {
+  const stopTranscription = useCallback((shouldSubmit = true, sendFn = null) => {
     if (!isTranscribing) return;
 
     setIsTranscribing(false);
 
-    if (shouldSubmit && !hasSubmittedResponse.current) {
-      submitResponse();
+    if (shouldSubmit && !hasSubmittedResponse.current && sendFn) {
+      submitResponse(sendFn);
     }
 
     workletNode.current?.port.postMessage({ command: 'stop' });
@@ -126,8 +134,6 @@ const InterviewSession = ({ interviewId }) => {
 
     if (assemblyWS.current?.readyState === 1) assemblyWS.current.close();
     assemblyWS.current = null;
-
-    setStatus('disconnected');
   }, [isTranscribing, submitResponse]);
 
   // --- Start transcription ---
@@ -158,21 +164,21 @@ const InterviewSession = ({ interviewId }) => {
       mediaSource.current = src;
       src.connect(node);
 
-      const token = await getWebSocketToken();
+      const token = await getToken();
       const socket = new WebSocket(`${import.meta.env.VITE_WS_URL}/assembly?token=${token}`);
       assemblyWS.current = socket;
       socket.binaryType = 'arraybuffer';
 
       const timeout = setTimeout(() => {
         setError('AssemblyAI connection timeout');
-        stopTranscription(false);
+        stopTranscription(false, null);
       }, 10000);
 
       socket.onopen = () => {
         clearTimeout(timeout);
         node.port.postMessage({ command: 'start' });
         setIsTranscribing(true);
-        setStatus('connected');
+        
 
         node.port.onmessage = (e) => {
           if (socket.readyState === WebSocket.OPEN) socket.send(e.data.audioData);
@@ -190,15 +196,13 @@ const InterviewSession = ({ interviewId }) => {
 
       socket.onerror = () => {
         setError('Transcription error');
-        stopTranscription(false);
+        stopTranscription(false, null);
       };
-
-      socket.onclose = () => setStatus('disconnected');
     } catch (err) {
       setError(`Audio setup failed: ${err.message}`);
-      stopTranscription(false);
+      stopTranscription(false, null);
     }
-  }, [isTranscribing, isSpeaking, stopTranscription]);
+  }, [isTranscribing, isSpeaking, stopTranscription, getToken]);
 
   // --- Process next question in queue ---
   const processNextQuestion = useCallback(async () => {
@@ -236,175 +240,136 @@ const InterviewSession = ({ interviewId }) => {
     [processNextQuestion, isProcessingResponse]
   );
 
+  // Define handlers - use useMemo for object, not useCallback
+  const handlers = useMemo(() => ({
+    test: (msg, ws) => {
+      ws.send(JSON.stringify({ type: 'start', interviewId }));
+    },
+
+    question: (msg) => {
+      handleQuestion(
+        msg.question,
+        (msg.questionNumber || msg.questionIndex || 1) - 1,
+        msg.totalQuestions || msg.numberOfQuestions || 10
+      );
+    },
+
+    analysis: (msg) => {
+      setAnalysis(msg.analysis);
+      setIsProcessingResponse(false);
+
+      setQuestionAnalyses(prev => [
+        ...prev,
+        {
+          questionIndex: qIndex,
+          question,
+          response: partial.current,
+          analysis: msg.analysis,
+          timestamp: new Date()
+        }
+      ]);
+
+      setTimeout(() => {
+        if (questionQueue.current.length > 0) {
+          processNextQuestion();
+        }
+      }, 3000);
+    },
+
+    acknowledgment: (msg) => {
+      // Batch mode: answer recorded, no analysis yet
+      setIsProcessingResponse(false);
+      console.log('✅ Answer recorded:', msg.message);
+      
+      setTimeout(() => {
+        if (questionQueue.current.length > 0) {
+          processNextQuestion();
+        }
+      }, 1500);
+    },
+
+    evaluating: (msg) => {
+      console.log('🔄 Evaluating interview:', msg.message);
+      setIsProcessingResponse(true);
+    },
+
+    finalReport: (msg) => {
+      setFinalReport(msg.report);
+      setIsProcessingResponse(false);
+    },
+
+    end: () => {
+      stopTranscription(false, null);
+      setCompleted(true);
+    },
+
+    error: (msg) => {
+      setError(msg.message);
+      setIsProcessingResponse(false);
+      stopTranscription(false, null);
+    },
+  }), [interviewId, handleQuestion, qIndex, question, processNextQuestion, stopTranscription]);
+
+  const {
+    interviewWS,
+    status,
+    send,
+  } = useInterviewSocket(interviewId, handlers);
+
+  // Store send function in ref for use in callbacks
+  useEffect(() => {
+    sendFnRef.current = send;
+  }, [send]);
+
+  // Setup user video feed
+  useEffect(() => {
+    const setupUserVideo = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: 640, height: 480 },
+          audio: false 
+        });
+        userVideoStream.current = stream;
+        if (userVideoRef.current) {
+          userVideoRef.current.srcObject = stream;
+          // Wait for video to be ready
+          userVideoRef.current.onloadedmetadata = () => {
+            setIsVideoReady(true);
+            console.log('✅ User video ready for proctoring');
+          };
+        }
+      } catch (err) {
+        console.error('Failed to access camera:', err);
+      }
+    };
+
+    setupUserVideo();
+
+    // Cleanup on unmount
+    return () => {
+      if (userVideoStream.current) {
+        userVideoStream.current.getTracks().forEach(track => track.stop());
+      }
+      setIsVideoReady(false);
+    };
+  }, []);
+
+
+
   // --- Manual submit button ---
   const handleManualSubmit = useCallback(() => {
     if (partial.current.trim().length > 5) {
-      stopTranscription(true);
+      stopTranscription(true, sendFnRef.current);
     } else {
       setError('Please provide a longer response');
     }
   }, [stopTranscription]);
 
-  // --- Interview WebSocket setup ---
-  useEffect(() => {
-    // Prevent double initialization
-    if (wsInitialized.current) {
-      console.log("⚠️ WebSocket already initialized, skipping");
-      return;
-    }
-    
-    wsInitialized.current = true;
-    let ws = null;
-    let mounted = true;
-
-    const setupWebSocket = async () => {
-      try {
-        console.log("🔌 Setting up WebSocket connection...");
-        
-        const token = await getWebSocketToken();
-        console.log("🎫 Got WebSocket token");
-        
-        ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/ws/interview?token=${token}`);
-        
-        // Store in ref AFTER creating
-        interviewWS.current = ws;
-        console.log("📝 Stored WebSocket in ref");
-        
-        // Expose for debugging
-        window.testWS = ws;
-        console.log("🔧 WebSocket exposed as window.testWS for debugging");
-
-        ws.onopen = () => {
-          if (!mounted) {
-            console.log("⚠️ Component unmounted, closing WebSocket");
-            ws.close();
-            return;
-          }
-          
-          console.log('✅ Interview WebSocket connected');
-          console.log('WebSocket readyState:', ws.readyState, '(1 = OPEN)');
-          console.log('Is this the ref WebSocket?', ws === interviewWS.current);
-          setStatus('connected');
-          
-          // Don't send start message here - wait for test message confirmation
-          console.log('⏳ Waiting for test message before sending start...');
-        };
-
-        ws.onmessage = ({ data }) => {
-          if (!mounted) return;
-          
-          const msg = JSON.parse(data);
-          console.log('📨 Interview WS message:', msg.type, msg);
-          
-          switch (msg.type) {
-            case 'test':
-              console.log('✅ Test message received:', msg.message);
-              
-              // NOW send the start message after confirming connection works
-              if (ws.readyState === WebSocket.OPEN) {
-                console.log('📤 Sending start message after test confirmation');
-                const message = JSON.stringify({ type: 'start', interviewId });
-                ws.send(message);
-                console.log('✅ Start message sent');
-              }
-              break;
-              
-            case 'question':
-              console.log('❓ New question:', msg.question);
-              handleQuestion(
-                msg.question, 
-                (msg.questionNumber || msg.questionIndex || 1) - 1,
-                msg.totalQuestions || msg.numberOfQuestions || 10
-              );
-              break;
-            case 'analysis':
-              console.log('📊 Analysis received:', msg.analysis);
-              setAnalysis(msg.analysis);
-              setIsProcessingResponse(false);
-              
-              setQuestionAnalyses(prev => [
-                ...prev,
-                {
-                  questionIndex: (msg.questionNumber || msg.questionIndex || qIndex),
-                  question: question,
-                  response: partial.current,
-                  analysis: msg.analysis,
-                  timestamp: new Date()
-                }
-              ]);
-              
-              setTimeout(() => {
-                if (questionQueue.current.length > 0) {
-                  processNextQuestion();
-                }
-              }, 3000);
-              break;
-            case 'finalReport':
-              console.log('📋 Final report received');
-              setFinalReport(msg.report);
-              break;
-            case 'end':
-              console.log('✅ Interview ended');
-              stopTranscription(false);
-              setCompleted(true);
-              setStatus('completed');
-              break;
-            case 'error':
-              console.error('❌ Interview error:', msg.message);
-              setError(msg.message);
-              setIsProcessingResponse(false);
-              stopTranscription(false);
-              setStatus('error');
-              break;
-            default:
-              console.warn('⚠️ Unknown message type:', msg.type);
-          }
-        };
-
-        ws.onerror = (error) => {
-          console.error('❌ Interview WS error:', error);
-          if (mounted) setError('Interview WS error');
-        };
-        
-        ws.onclose = (event) => {
-          console.log('🔴 Interview WebSocket closed', {
-            code: event.code,
-            reason: event.reason,
-            wasClean: event.wasClean
-          });
-          if (mounted) setStatus('disconnected');
-        };
-
-      } catch (error) {
-        console.error('❌ Failed to setup WebSocket:', error);
-        if (mounted) setError('Failed to connect to interview service');
-      }
-    };
-
-    setupWebSocket();
-
-    return () => {
-      console.log("🧹 Cleaning up WebSocket connection");
-      mounted = false;
-      wsInitialized.current = false;
-      stopTranscription(false);
-      speechSynthesis.cancel();
-      
-      // Close the WebSocket if it exists
-      if (ws) {
-        console.log("🔌 Closing WebSocket, readyState:", ws.readyState);
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-          ws.close();
-        }
-      }
-      interviewWS.current = null;
-    };
-  }, [interviewId]);
 
   return (
-    <div className="p-6 bg-gray-900 text-white rounded max-w-4xl mx-auto">
-       {status === 'connected' && !completed && (
-      <FaceDetection interviewWS={interviewWS.current} />
+    <div className="p-6 bg-gray-900 text-white rounded max-w-7xl mx-auto">
+       {status === 'connected' && !completed && isVideoReady && (
+      <FaceDetection interviewWS={interviewWS.current} videoElement={userVideoRef.current} />
     )}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center">
@@ -465,64 +430,112 @@ const InterviewSession = ({ interviewId }) => {
         <div className="text-green-400">Interview completed!</div>
       ) : (
         <>
-          <div className="bg-gray-800 p-4 rounded mb-4">
-            <p className="font-semibold">
+          <div className="bg-gray-800 p-4 rounded mb-6">
+            <p className="font-semibold text-center text-lg">
               Q {qIndex + 1}/{total}: {question || 'Waiting…'}
             </p>
           </div>
 
-          {/* Status indicators */}
-          <div className="flex gap-4 mb-4">
-            <div className="flex items-center">
-              <div
-                className={`w-4 h-4 rounded-full ${
-                  isSpeaking ? 'bg-blue-500 animate-pulse' : 'bg-gray-600'
-                }`}
-              />
-              <span className="ml-2 text-sm">{isSpeaking ? 'AI Speaking...' : 'Silent'}</span>
+          {/* Video Feeds Section */}
+          <div className="mb-6">
+            <div className="grid grid-cols-2 gap-6 mb-6">
+              {/* User Video Feed - Left */}
+              <div className="relative">
+                <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
+                  <video
+                    ref={userVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-80 object-cover bg-gray-900"
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-white font-semibold">You</span>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            isTranscribing ? 'bg-red-500 animate-pulse' : 'bg-gray-600'
+                          }`}
+                        />
+                        <span className="text-sm text-white">
+                          {isTranscribing ? 'Recording' : 'Standby'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* AI Avatar - Right */}
+              <div className="relative">
+                <div className="bg-gradient-to-br from-blue-900 to-purple-900 rounded-lg overflow-hidden shadow-lg h-80 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="w-32 h-32 mx-auto mb-4 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                      <svg 
+                        className="w-20 h-20 text-white" 
+                        fill="currentColor" 
+                        viewBox="0 0 20 20"
+                      >
+                        <path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" />
+                      </svg>
+                    </div>
+                    <p className="text-white text-lg font-semibold">AI Interviewer</p>
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-white font-semibold">AI Assistant</span>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            isSpeaking ? 'bg-blue-500 animate-pulse' : 'bg-gray-600'
+                          }`}
+                        />
+                        <span className="text-sm text-white">
+                          {isSpeaking ? 'Speaking' : 'Silent'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            
-            <div className="flex items-center">
-              <div
-                className={`w-4 h-4 rounded-full ${
-                  isTranscribing ? 'bg-red-500 animate-pulse' : 'bg-gray-600'
-                }`}
-              />
-              <span className="ml-2 text-sm">{isTranscribing ? 'Listening...' : 'Not listening'}</span>
+
+            {/* Centered Submit Button */}
+            <div className="flex justify-center">
+              {isTranscribing && transcript.length > 10 && (
+                <button
+                  onClick={handleManualSubmit}
+                  className="bg-green-600 hover:bg-green-700 py-3 px-8 rounded-lg text-lg font-semibold shadow-lg transition-all transform hover:scale-105"
+                  disabled={isProcessingResponse}
+                >
+                  Submit Answer
+                </button>
+              )}
+              
+              {isTranscribing && transcript.length <= 10 && (
+                <button
+                  onClick={() => stopTranscription(false, null)}
+                  className="bg-red-600 hover:bg-red-700 py-3 px-8 rounded-lg text-lg font-semibold shadow-lg"
+                >
+                  Cancel Recording
+                </button>
+              )}
+
+              {isProcessingResponse && (
+                <div className="bg-yellow-600 py-3 px-8 rounded-lg text-lg font-semibold shadow-lg flex items-center gap-3">
+                  <div className="w-5 h-5 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Processing your response...
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Control buttons */}
-          {isTranscribing && transcript.length > 10 && (
-            <button
-              onClick={handleManualSubmit}
-              className="bg-green-600 hover:bg-green-700 py-2 px-4 rounded mb-4 mr-2"
-              disabled={isProcessingResponse}
-            >
-              Submit Answer
-            </button>
-          )}
-
-          {isTranscribing && (
-            <button
-              onClick={() => stopTranscription(false)}
-              className="bg-red-600 hover:bg-red-700 py-2 px-4 rounded mb-4"
-            >
-              Cancel
-            </button>
-          )}
-
-          {isProcessingResponse && (
-            <div className="text-yellow-400 mb-4">
-              Processing your response...
-            </div>
-          )}
-
           {/* Live transcript */}
           {transcript && (
-            <div className="bg-gray-800 p-3 rounded mb-4">
-              <p className="text-sm text-gray-400 mb-1">Your response:</p>
-              <p className="italic">{transcript}</p>
+            <div className="bg-gray-800 p-4 rounded-lg mb-4">
+              <p className="text-sm text-gray-400 mb-2">Your response:</p>
+              <p className="italic text-lg">{transcript}</p>
               <p className="text-xs text-gray-500 mt-2">
                 {transcript.split(' ').length} words
               </p>

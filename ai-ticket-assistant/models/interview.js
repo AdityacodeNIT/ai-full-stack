@@ -52,6 +52,16 @@ const interviewSchema = new Schema(
       type: Object, // Stores the JSON from summarizeOverallFeedback
       default: null,
     },
+    proctoringViolations: [
+      {
+        type: {
+          type: String,
+          enum: ["no_face", "multiple_faces", "tab_switch", "object_detected", "suspicious_audio"],
+        },
+        timestamp: Number,
+        questionNumber: Number,
+      },
+    ],
   },
   {
     timestamps: true, // Adds createdAt and updatedAt fields automatically
