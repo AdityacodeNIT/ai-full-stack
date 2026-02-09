@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Home from "./pages/Home.jsx";
 import Admin from "./pages/admin.jsx";
+import AdminDashboard from "./pages/AdminDashboard.jsx";
 import Navbar from "./components/navbar.jsx";
 import InterviewPage from "./pages/Interview/interviewPage.jsx";
 import PastInterviews from "./pages/PastInterviews.jsx";
@@ -78,7 +79,7 @@ createRoot(document.getElementById("root")).render(
                 path="/admin"
                 element={
                   <ProtectedRoute>
-                    <Admin />
+                    <AdminDashboard />
                   </ProtectedRoute>
                 }
               />

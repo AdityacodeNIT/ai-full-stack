@@ -9,6 +9,7 @@ import cookieParser from "cookie-parser";
 
 import userRoutes from "./routes/user.js";
 import interviewRoutes from "./routes/interview.js";
+import adminRoutes from "./routes/admin.js";
 
 import { setupInterviewSocket } from "./websocket/server.js";
 import { createAssemblySocket } from "./websocket/assemblysocket.js";
@@ -126,6 +127,7 @@ app.use(cookieParser());
 // API routes
 app.use("/api/auth", userRoutes);
 app.use("/interview", interviewRoutes);
+app.use("/api/admin", adminRoutes);
 
 // ------------------------------
 // Start server + DB

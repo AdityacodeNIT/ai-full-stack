@@ -17,6 +17,14 @@ const InterviewForm = () => {
   const dispatch = useDispatch();
   const { loading, error, interview } = useSelector((state) => state.interview);
 
+  // Manual reset function for stuck states
+  const handleReset = () => {
+    dispatch(clearInterview());
+    setIsSubmitting(false);
+    localStorage.removeItem('persist:root');
+    window.location.reload();
+  };
+
   // Validate form data
   const validateForm = () => {
     const errors = {};
@@ -90,6 +98,27 @@ const InterviewForm = () => {
 
   // Reset form when component unmounts or interview is cleared
   useEffect(() => {
+    // Clear any stuck loading state from localStorage on mount
+    const persistedState = localStorage.getItem('persist:root');
+    if (persistedState) {
+      try {
+        const parsed = JSON.parse(persistedState);
+        if (parsed.interview) {
+          const interviewState = JSON.parse(parsed.interview);
+          if (interviewState.loading === true) {
+            console.log('🧹 Clearing stuck loading state from localStorage');
+            interviewState.loading = false;
+            interviewState.error = null;
+            parsed.interview = JSON.stringify(interviewState);
+            localStorage.setItem('persist:root', JSON.stringify(parsed));
+            window.location.reload();
+          }
+        }
+      } catch (e) {
+        console.error('Error cleaning localStorage:', e);
+      }
+    }
+
     return () => {
       if (interview) {
         dispatch(clearInterview());
@@ -255,6 +284,17 @@ const InterviewForm = () => {
             'Generate Interview'
           )}
         </button>
+
+        {/* Reset Button (shown when stuck) */}
+        {(loading || isSubmitting) && (
+          <button
+            type="button"
+            onClick={handleReset}
+            className="w-full py-2 px-4 rounded-lg font-medium bg-red-600 hover:bg-red-700 text-white mt-2"
+          >
+            Reset Form (Click if stuck)
+          </button>
+        )}
       </form>
 
       {/* Success Message */}
