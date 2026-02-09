@@ -26,6 +26,7 @@ const InterviewSession = ({ interviewId }) => {
   const userVideoRef = useRef(null);
   const userVideoStream = useRef(null);
   const [isVideoReady, setIsVideoReady] = useState(false);
+  const [startProctoring, setStartProctoring] = useState(false);
 
   const assemblyWS = useRef(null);
   const audioCtx = useRef(null);
@@ -332,10 +333,24 @@ const InterviewSession = ({ interviewId }) => {
         userVideoStream.current = stream;
         if (userVideoRef.current) {
           userVideoRef.current.srcObject = stream;
-          // Wait for video to be ready
+          // Wait for video to be ready and playing
           userVideoRef.current.onloadedmetadata = () => {
-            setIsVideoReady(true);
-            console.log('✅ User video ready for proctoring');
+            userVideoRef.current.play().then(() => {
+              console.log('✅ User video ready and playing for proctoring');
+              console.log('📹 Video dimensions:', {
+                width: userVideoRef.current.videoWidth,
+                height: userVideoRef.current.videoHeight,
+                readyState: userVideoRef.current.readyState
+              });
+              setIsVideoReady(true);
+              // Wait 1 second before starting proctoring to ensure video is stable
+              setTimeout(() => {
+                console.log('🎬 Starting proctoring...');
+                setStartProctoring(true);
+              }, 1000);
+            }).catch(err => {
+              console.error('❌ Failed to play video:', err);
+            });
           };
         }
       } catch (err) {
@@ -351,6 +366,7 @@ const InterviewSession = ({ interviewId }) => {
         userVideoStream.current.getTracks().forEach(track => track.stop());
       }
       setIsVideoReady(false);
+      setStartProctoring(false);
     };
   }, []);
 
@@ -368,7 +384,7 @@ const InterviewSession = ({ interviewId }) => {
 
   return (
     <div className="p-6 bg-gray-900 text-white rounded max-w-7xl mx-auto">
-       {status === 'connected' && !completed && isVideoReady && (
+       {status === 'connected' && !completed && startProctoring && (
       <FaceDetection interviewWS={interviewWS.current} videoElement={userVideoRef.current} />
     )}
       <div className="flex items-center justify-between mb-4">

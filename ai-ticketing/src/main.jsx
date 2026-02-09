@@ -1,4 +1,3 @@
-import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 
@@ -11,13 +10,12 @@ import InterviewPage from "./pages/Interview/interviewPage.jsx";
 import PastInterviews from "./pages/PastInterviews.jsx";
 import VapiinterviewPage from "./pages/VapiinterviewPage.jsx";
 
-
 import { Provider } from "react-redux";
 import { store, persistor } from "./redux/reduxStore.jsx";
 import { PersistGate } from "redux-persist/integration/react";
 
 import { ClerkProvider } from "@clerk/clerk-react";
-import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import ProtectedRoute from "./components/protectedRoute.jsx";
 import ClerkApiSetup from "./components/ClerkApiSetup.jsx";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
