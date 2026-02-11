@@ -20,9 +20,23 @@ export const getAllInterviews = createAsyncThunk(
     async (_, { rejectWithValue }) => {
         try {
             const res = await api.get('/interview');
+            console.log("the data",res.data)
             return res.data.interviews;
         } catch (err) {
             return rejectWithValue(err.response?.data?.message || 'Failed to fetch interviews');
+        }
+    }
+);
+
+export const getInterviewById = createAsyncThunk(
+    'interview/getInterviewById',
+    async (id, { rejectWithValue }) => {
+        try {
+            const res = await api.get(`/interview/${id}`);
+            console.log("the data",res.data)
+            return res.data.interview;
+        } catch (err) {
+            return rejectWithValue(err.response?.data?.message || 'Failed to fetch interview');
         }
     }
 );
@@ -70,6 +84,21 @@ const interviewSlice = createSlice({
       .addCase(getAllInterviews.rejected, (state, action) => {
           state.loading = false;
           state.error = action.payload;
+      })
+      .addCase(getInterviewById.pending, (state) => {
+          state.loading = true;
+          state.error = null;
+          state.interview = null; // Clear previous interview to avoid showing stale data
+      })
+      .addCase(getInterviewById.fulfilled, (state, action) => {
+          state.loading = false;
+          state.interview = action.payload;
+          state.interviewId = action.payload._id;
+      })
+      .addCase(getInterviewById.rejected, (state, action) => {
+          state.loading = false;
+          state.error = action.payload;
+          state.interview = null;
       });
   },
 });

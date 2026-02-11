@@ -65,10 +65,12 @@ export const createInterview = async (req, res) => {
    Get all interviews
 ───────────────────────────── */
 export const getAllInterviews = async (req, res) => {
+  console.log(`📋 Fetching interviews for user ${req.clerkUserId}...`);
   try {
     const interviews = await Interview.find({
       userId: req.clerkUserId,
     }).sort({ createdAt: -1 });
+    console.log(`📋 Fetched ${interviews.length} interviews for user ${req.clerkUserId}`);
 
     res.status(200).json({
       success: true,
