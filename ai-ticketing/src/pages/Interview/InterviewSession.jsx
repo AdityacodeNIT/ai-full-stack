@@ -4,6 +4,7 @@ import ProctoringManager from '../proctoring/ProctoringManager.jsx';
 import { useInterviewSocket } from './hooks/useInterviewSocket.js';
 import { useInterviewLock } from '../../context/InterviewLockContext.jsx';
 import { log, warn} from '../../utils/logger.js';
+import { useInterviewCamera } from './hooks/useInterviewCamera.js';
 
 const InterviewSession = ({ interviewId }) => {
   const { getToken } = useAuth();
@@ -25,11 +26,9 @@ const InterviewSession = ({ interviewId }) => {
   const [questionAnalyses, setQuestionAnalyses] = useState([]);
   const [showPreviousAnalyses, setShowPreviousAnalyses] = useState(false);
 
+
   // Video feed refs
-  const userVideoRef = useRef(null);
-  const userVideoStream = useRef(null);
-  const [isVideoReady, setIsVideoReady] = useState(false);
-  const [startProctoring, setStartProctoring] = useState(false);
+
 
   const assemblyWS = useRef(null);
   const audioCtx = useRef(null);
@@ -50,6 +49,14 @@ const InterviewSession = ({ interviewId }) => {
 
   const questionQueue = useRef([]);
   const processedQuestions = useRef(new Set());
+
+
+  const {
+  videoRef: userVideoRef,
+  startProctoring,
+  stopVideoStream,
+} = useInterviewCamera();
+
 
   // --- Send message to AssemblyAI ---
   const sendAssemblyMsg = (msg) => {
@@ -114,6 +121,7 @@ const InterviewSession = ({ interviewId }) => {
       });
     }
   }, []);
+
 
   // --- Stop transcription ---
   const stopTranscription = useCallback((shouldSubmit = true, sendFn = null) => {
@@ -301,6 +309,7 @@ const InterviewSession = ({ interviewId }) => {
       setFinalReport(msg.report);
       setIsProcessingResponse(false);
         stopTranscription(false, null);
+        stopVideoStream();
   setCompleted(true);
   unlockInterview(); 
 
@@ -312,6 +321,7 @@ const InterviewSession = ({ interviewId }) => {
     end: () => {
       stopTranscription(false, null);
       setCompleted(true);
+      stopVideoStream();
       unlockInterview();
          if (document.fullscreenElement) {
     document.exitFullscreen().catch(() => {});
@@ -322,6 +332,7 @@ const InterviewSession = ({ interviewId }) => {
       setError(msg.message);
       setIsProcessingResponse(false);
       stopTranscription(false, null);
+      stopVideoStream();
       unlockInterview();
 
        if (document.fullscreenElement) {
@@ -329,7 +340,7 @@ const InterviewSession = ({ interviewId }) => {
   } 
 
     },
-  }), [interviewId, handleQuestion, qIndex, question, processNextQuestion, stopTranscription, unlockInterview]);
+  }), [interviewId, handleQuestion, qIndex, question, processNextQuestion, stopTranscription, unlockInterview,stopVideoStream]);
 
   const {
     interviewWS,
@@ -370,55 +381,6 @@ const InterviewSession = ({ interviewId }) => {
       }
     };
   }, [status, completed, interviewId, lockInterview, unlockInterview]);
-
-
-  // Setup user video feed
-  useEffect(() => {
-    const setupUserVideo = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480 },
-          audio: false
-        });
-        userVideoStream.current = stream;
-        if (userVideoRef.current) {
-          userVideoRef.current.srcObject = stream;
-          // Wait for video to be ready and playing
-          userVideoRef.current.onloadedmetadata = () => {
-            userVideoRef.current.play().then(() => {
-              log(' User video ready and playing for proctoring');
-              log('📹 Video dimensions:', {
-                width: userVideoRef.current.videoWidth,
-                height: userVideoRef.current.videoHeight,
-                readyState: userVideoRef.current.readyState
-              });
-              setIsVideoReady(true);
-              // Wait 1 second before starting proctoring to ensure video is stable
-              setTimeout(() => {
-                log('🎬 Starting proctoring...');
-                setStartProctoring(true);
-              }, 1000);
-            }).catch(err => {
-              error(' Failed to play video:', err);
-            });
-          };
-        }
-      } catch (err) {
-        error('Failed to access camera:', err);
-      }
-    };
-
-    setupUserVideo();
-
-    // Cleanup on unmount
-    return () => {
-      if (userVideoStream.current) {
-        userVideoStream.current.getTracks().forEach(track => track.stop());
-      }
-      setIsVideoReady(false);
-      setStartProctoring(false);
-    };
-  }, []);
 
 
 
