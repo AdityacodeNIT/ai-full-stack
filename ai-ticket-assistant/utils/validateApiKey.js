@@ -1,8 +1,9 @@
 import fetch from "node-fetch";
+import { logger } from "./logger.js";
 
 export async function validateApiKey() {
   try {
-    console.log('🔍 Validating AssemblyAI API key...');
+    logger.log('🔍 Validating AssemblyAI API key...');
     const response = await fetch('https://api.assemblyai.com/v2/transcript', {
       method: 'GET',
       headers: {

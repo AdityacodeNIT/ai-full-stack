@@ -1,23 +1,21 @@
+import { logger } from "../../utils/logger.js";
 import { interviewAgent, interviewEvaluationAgent, combinedAgent, batchQuestionAgent, batchEvaluationAgent } from "./interviewAgent.js";
 
 export class InterviewAgentAdapter {
   constructor(context) {
-    this.context = context; // role, level, techstack, focus, maxQuestions
+    this.context = context; 
     this.history = [];
-    this.mode = "batch"; // "batch" or "adaptive"
+    this.mode = "batch"; 
     this.preGeneratedQuestions = [];
     this.currentQuestionIndex = 0;
     this.retryCount = 0;
     this.maxRetries = 3;
   }
 
-  /* ─────────────────────────────
-     Helpers
-  ───────────────────────────── */
+  //  Helpers
 
   buildContextText() {
     const { role, level, techstack, focus, maxQuestions } = this.context;
-
     return `
 INTERVIEW CONTEXT:
 - Role: ${role}
@@ -31,29 +29,24 @@ INTERVIEW CONTEXT:
   extractJson(agentResult) {
     const text = agentResult?.output?.[0]?.content;
     if (!text) {
-      console.error("❌ No content in agent result");
+      logger.error(" No content in agent result");
       return null;
     }
 
     try {
-      // Remove markdown code blocks
       let cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "");
-      
-      // Try to find JSON object in the text
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        console.log("✅ Successfully parsed JSON response");
+        logger.log(" Successfully parsed JSON response");
         return parsed;
       }
-      
-      // If no match, try parsing the whole thing
       const parsed = JSON.parse(cleaned.trim());
-      console.log("✅ Successfully parsed JSON response");
+      logger.log(" Successfully parsed JSON response");
       return parsed;
     } catch (err) {
-      console.error("❌ JSON parse failed:", err.message);
-      console.error("Raw text:", text?.substring(0, 200));
+      logger.error(" JSON parse failed:", err.message);
+      logger.error("Raw text:", text?.substring(0, 200));
       return null;
     }
   }
@@ -61,11 +54,11 @@ INTERVIEW CONTEXT:
   async retryWithBackoff(fn, context) {
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        console.log(`🔄 Attempt ${attempt}/${this.maxRetries}: ${context}`);
+        logger.log(` Attempt ${attempt}/${this.maxRetries}: ${context}`);
         const result = await fn();
         return result;
       } catch (err) {
-        console.error(`❌ Attempt ${attempt} failed:`, err.message);
+        logger.error(` Attempt ${attempt} failed:`, err.message);
         
         if (attempt === this.maxRetries) {
           throw new Error(`Failed after ${this.maxRetries} attempts: ${err.message}`);
@@ -73,20 +66,18 @@ INTERVIEW CONTEXT:
         
         // Exponential backoff: 1s, 2s, 4s
         const delay = Math.pow(2, attempt - 1) * 1000;
-        console.log(`⏳ Waiting ${delay}ms before retry...`);
+        logger.log(` Waiting ${delay}ms before retry...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
 
-  /* ─────────────────────────────
-     BATCH MODE: Generate all questions upfront
-  ───────────────────────────── */
-
+  //BATCH MODE: Generate all questions upfront
+ 
   async generateAllQuestions() {
     const { level, maxQuestions, role, techstack } = this.context;
     
-    console.log(`📝 Generating ${maxQuestions} ${level}-level questions for ${role}...`);
+    logger.log(`📝 Generating ${maxQuestions} ${level}-level questions for ${role}...`);
     
     const generateFn = async () => {
       const res = await batchQuestionAgent.run({
@@ -124,35 +115,32 @@ Return STRICT JSON only:
       }
 
       if (result.questions.length !== maxQuestions) {
-        console.warn(`⚠️ Expected ${maxQuestions} questions, got ${result.questions.length}`);
+        logger.warn(` Expected ${maxQuestions} questions, got ${result.questions.length}`);
       }
 
       return result;
     };
 
     const result = await this.retryWithBackoff(generateFn, "Generating questions");
-    
     this.preGeneratedQuestions = result.questions;
-    console.log(`✅ Generated ${this.preGeneratedQuestions.length} questions successfully`);
-    
+    logger.log(` Generated ${this.preGeneratedQuestions.length} questions successfully`);
     // Log first question as preview
     if (this.preGeneratedQuestions.length > 0) {
-      console.log(`📋 First question: ${this.preGeneratedQuestions[0].question.substring(0, 80)}...`);
+      logger.log(` First question: ${this.preGeneratedQuestions[0].question.substring(0, 80)}...`);
     }
-    
     return this.preGeneratedQuestions;
   }
 
   getNextQuestion() {
     if (this.currentQuestionIndex >= this.preGeneratedQuestions.length) {
-      console.log("✅ All questions have been asked");
+      logger.log(" All questions have been asked");
       return null;
     }
     
     const question = this.preGeneratedQuestions[this.currentQuestionIndex];
     this.currentQuestionIndex++;
     
-    console.log(`📤 Sending question ${this.currentQuestionIndex}/${this.preGeneratedQuestions.length}`);
+    logger.log(`📤 Sending question ${this.currentQuestionIndex}/${this.preGeneratedQuestions.length}`);
     
     return {
       question: question.question,
@@ -162,9 +150,7 @@ Return STRICT JSON only:
     };
   }
 
-  /* ─────────────────────────────
-     Interview flow (BATCH MODE)
-  ───────────────────────────── */
+  // Interview flow (BATCH MODE)
 
   async generateOpeningQuestion() {
     try {
@@ -184,21 +170,19 @@ Return STRICT JSON only:
         shouldEnd: false
       };
     } catch (err) {
-      console.error("❌ Failed to generate opening question:", err);
+      logger.error(" Failed to generate opening question:", err);
       throw new Error(`Interview initialization failed: ${err.message}`);
     }
   }
 
-  /* ─────────────────────────────
-     Store answer (NO API call)
-  ───────────────────────────── */
+  // Store answer (NO API call)
 
   async processAnswer({ question, answer }) {
-    console.log(`📥 Storing answer ${this.history.length + 1} (${answer.length} characters)`);
+    logger.log(`📥 Storing answer ${this.history.length + 1} (${answer.length} characters)`);
     
     // Validate answer
     if (!answer || answer.trim().length < 10) {
-      console.warn("⚠️ Answer is very short");
+      logger.warn(" Answer is very short");
     }
     
     // Just store the answer, no AI evaluation yet
@@ -214,7 +198,7 @@ Return STRICT JSON only:
     
     if (!nextQ) {
       // No more questions, end interview
-      console.log("✅ All questions answered, preparing for final evaluation");
+      logger.log(" All questions answered, preparing for final evaluation");
       return {
         evaluation: null, // Will evaluate all at the end
         decision: {
@@ -224,7 +208,6 @@ Return STRICT JSON only:
         }
       };
     }
-
     // Return next question without evaluation
     return {
       evaluation: null, // Will evaluate all at the end
@@ -235,13 +218,10 @@ Return STRICT JSON only:
       }
     };
   }
-
-  /* ─────────────────────────────
-     Batch evaluation at the end (ONE API call)
-  ───────────────────────────── */
+ // Batch evaluation at the end 
 
   async summarizeInterview() {
-    console.log(`🎯 Evaluating complete interview (${this.history.length} Q&A pairs)...`);
+    logger.log(`🎯 Evaluating complete interview (${this.history.length} Q&A pairs)...`);
     
     const evaluateFn = async () => {
       const res = await batchEvaluationAgent.run({
@@ -295,37 +275,37 @@ Return STRICT JSON only with ALL fields populated.
       const missingFields = requiredFields.filter(field => !(field in result));
       
       if (missingFields.length > 0) {
-        console.warn(`⚠️ Missing fields in evaluation: ${missingFields.join(', ')}`);
-        console.warn('Raw result:', JSON.stringify(result, null, 2));
+        logger.warn(` Missing fields in evaluation: ${missingFields.join(', ')}`);
+        logger.warn('Raw result:', JSON.stringify(result, null, 2));
       }
 
       // Validate data types
       if (typeof result.overallScore !== 'number') {
-        console.warn('⚠️ overallScore is not a number:', result.overallScore);
+        logger.warn(' overallScore is not a number:', result.overallScore);
       }
       if (!Array.isArray(result.strengths)) {
-        console.warn('⚠️ strengths is not an array:', result.strengths);
+        logger.warn(' strengths is not an array:', result.strengths);
       }
       if (!Array.isArray(result.areasForImprovement)) {
-        console.warn('⚠️ areasForImprovement is not an array:', result.areasForImprovement);
+        logger.warn(' areasForImprovement is not an array:', result.areasForImprovement);
       }
       if (!Array.isArray(result.questionEvaluations)) {
-        console.warn('⚠️ questionEvaluations is not an array:', result.questionEvaluations);
+        logger.warn(' questionEvaluations is not an array:', result.questionEvaluations);
       }
 
-      console.log('✅ Evaluation validation passed');
-      console.log(`📊 Scores - Overall: ${result.overallScore}, Technical: ${result.technicalScore}, Problem-Solving: ${result.problemSolvingScore}, Communication: ${result.communicationScore}`);
-      console.log(`💪 Strengths: ${result.strengths?.length || 0} items`);
-      console.log(`📈 Areas for improvement: ${result.areasForImprovement?.length || 0} items`);
+      logger.log(' Evaluation validation passed');
+      logger.log(` Scores - Overall: ${result.overallScore}, Technical: ${result.technicalScore}, Problem-Solving: ${result.problemSolvingScore}, Communication: ${result.communicationScore}`);
+      logger.log(` Strengths: ${result.strengths?.length || 0} items`);
+      logger.log(` Areas for improvement: ${result.areasForImprovement?.length || 0} items`);
 
       return result;
     };
 
     const result = await this.retryWithBackoff(evaluateFn, "Evaluating interview");
     
-    console.log(`✅ Evaluation complete - Overall score: ${result.overallScore}/100`);
-    console.log(`📊 Recommendation: ${result.recommendation}`);
-    console.log(`💡 Reason: ${result.recommendationReason?.substring(0, 100)}...`);
+    logger.log(` Evaluation complete - Overall score: ${result.overallScore}/100`);
+    logger.log(` Recommendation: ${result.recommendation}`);
+    logger.log(` Reason: ${result.recommendationReason?.substring(0, 100)}...`);
     
     return result;
   }

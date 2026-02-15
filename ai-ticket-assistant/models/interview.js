@@ -7,37 +7,34 @@ const interviewSchema = new Schema(
       required: true,
     },
     type: {
-      // This corresponds to 'questionFocusType' from earlier discussion
+
       type: String,
-      enum: ["technical", "behavioural", "balanced"], // Good to have enum for consistency
+      enum: ["technical", "behavioural", "balanced"], 
       default: "a balance",
     },
     level: {
       type: String,
-      enum: ["Junior", "Mid-level", "Senior", "Lead", "Executive"], // Add enum for consistency
+      enum: ["Junior", "Mid-level", "Senior", "Lead", "Executive"],
       required: true,
     },
     techstack: {
-      // <-- ADDED: To store the tech stack
-      type: [String], // Store as an array of strings
+      type: [String], 
       default: [],
     },
 
     numberOfQuestions: {
-      // <-- ADDED: To store the 'amount'
       type: Number,
       required: true,
       min: 1,
     },
     userId: {
-      // ✅ Clerk userId (string like "user_xxx")
       type: String,
       required: true,
       index: true,
     },
     status: {
       type: String,
-      enum: ["created", "in-progress", "completed"],
+      enum: ["created", "in-progress", "completed", "failed"],
       default: "created",
     },
 
@@ -45,21 +42,35 @@ const interviewSchema = new Schema(
       {
         question: String,
         response: String,
-        analysis: Object, // Stores the JSON from analyzeResponse
+        analysis: Object, 
       },
     ],
     finalReport: {
-      type: Object, // Stores the JSON from summarizeOverallFeedback
+      type: Object, 
       default: null,
     },
     proctoringViolations: [
       {
         type: {
           type: String,
-          enum: ["no_face", "multiple_faces", "tab_switch", "object_detected", "suspicious_audio"],
+          required: true
         },
-        timestamp: Number,
+        detector: {
+          type: String, // FaceDetector, ObjectDetector, etc.
+        },
+        timestamp: {
+          type: Number,
+          required: true
+        },
         questionNumber: Number,
+        metadata: {
+          type: Object, // Stores confidence, object name, bbox, etc.
+          default: {}
+        },
+        silent: {
+          type: Boolean, // If true, user was not notified
+          default: true
+        }
       },
     ],
   },

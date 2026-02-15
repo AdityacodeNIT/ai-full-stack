@@ -1,13 +1,14 @@
-import { useEffect, useRef } from 'react';
-import * as tf from '@tensorflow/tfjs';
-import * as faceDetection from '@tensorflow-models/face-detection';
+import { useEffect, useRef, useState } from 'react';
+import { log, warn, error } from '../../utils/logger.js';
 
 const FaceDetection = ({ interviewWS, videoElement }) => {
   const detectorRef = useRef(null);
   const intervalRef = useRef(null);
   const lastViolationRef = useRef({ type: null, time: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  console.log('🔍 FaceDetection mounted', { 
+  log('🔍 FaceDetection mounted', { 
     hasWS: !!interviewWS, 
     hasVideo: !!videoElement,
     videoReady: videoElement?.readyState 
@@ -22,7 +23,7 @@ const FaceDetection = ({ interviewWS, videoElement }) => {
     }
 
     if (interviewWS?.readyState === WebSocket.OPEN) {
-      console.log(`🚨 Face violation: ${type}`);
+      log(` Face violation: ${type}`);
       interviewWS.send(
         JSON.stringify({
           type: 'proctoring_violation',
@@ -35,25 +36,25 @@ const FaceDetection = ({ interviewWS, videoElement }) => {
   };
 
   useEffect(() => {
-    console.log('🎬 FaceDetection useEffect triggered', { 
+    log('🎬 FaceDetection useEffect triggered', { 
       hasVideo: !!videoElement,
       hasWS: !!interviewWS 
     });
 
     if (!videoElement) {
-      console.error('❌ No video element provided to FaceDetection');
+      error(' No video element provided to FaceDetection');
       return;
     }
 
     if (!interviewWS) {
-      console.error('❌ No WebSocket provided to FaceDetection');
+      error(' No WebSocket provided to FaceDetection');
       return;
     }
 
     const startProctoring = async () => {
       try {
-        console.log('🚀 Starting face proctoring...');
-        console.log('📹 Video element state:', {
+        log(' Starting face proctoring...');
+        log('📹 Video element state:', {
           readyState: videoElement.readyState,
           videoWidth: videoElement.videoWidth,
           videoHeight: videoElement.videoHeight,
@@ -62,21 +63,27 @@ const FaceDetection = ({ interviewWS, videoElement }) => {
 
         // Wait for video to be ready
         if (videoElement.readyState < 2) {
-          console.log('⏳ Waiting for video to load...');
+          log(' Waiting for video to load...');
           await new Promise((resolve) => {
             videoElement.onloadeddata = () => {
-              console.log('✅ Video loaded');
+              log(' Video loaded');
               resolve();
             };
           });
         }
 
-        // 🧠 TFJS
-        console.log('🧠 Loading TensorFlow.js...');
-        await tf.ready();
-        console.log('✅ TensorFlow.js ready');
+        // Lazy load TensorFlow only when needed
+        log('📦 Loading TensorFlow.js...');
+        const [tf, faceDetection] = await Promise.all([
+          import('@tensorflow/tfjs'),
+          import('@tensorflow-models/face-detection')
+        ]);
         
-        console.log('🔧 Creating face detector...');
+        log('🧠 Loading TensorFlow.js...');
+        await tf.ready();
+        log(' TensorFlow.js ready');
+        
+        log('🔧 Creating face detector...');
         detectorRef.current = await faceDetection.createDetector(
           faceDetection.SupportedModels.MediaPipeFaceDetector,
           {
@@ -85,23 +92,24 @@ const FaceDetection = ({ interviewWS, videoElement }) => {
           }
         );
 
-        console.log('✅ Face detector loaded successfully');
+        log(' Face detector loaded successfully');
+        setIsLoading(false);
 
         // Wait 3 seconds before starting detection (let user settle)
-        console.log('⏳ Waiting 3 seconds before starting detection...');
+        log(' Waiting 3 seconds before starting detection...');
         await new Promise(resolve => setTimeout(resolve, 3000));
 
-        console.log('🔁 Starting detection loop...');
+        log('🔁 Starting detection loop...');
         // 🔁 Detection loop
         intervalRef.current = setInterval(async () => {
           if (!detectorRef.current || !videoElement) {
-            console.warn('⚠️ Detector or video not available');
+            warn(' Detector or video not available');
             return;
           }
 
           try {
             const faces = await detectorRef.current.estimateFaces(videoElement);
-            console.log(`👤 Faces detected: ${faces.length}`, faces.length > 0 ? faces[0] : '');
+            log(`👤 Faces detected: ${faces.length}`, faces.length > 0 ? faces[0] : '');
 
             if (faces.length === 0) {
               sendViolation('no_face');
@@ -112,12 +120,14 @@ const FaceDetection = ({ interviewWS, videoElement }) => {
               lastViolationRef.current = { type: null, time: 0 };
             }
           } catch (err) {
-            console.error('❌ Face detection error:', err);
+            error(' Face detection error:', err);
           }
         }, 5000); // Check every 5 seconds (less aggressive)
       } catch (err) {
-        console.error('❌ Face proctoring setup error:', err);
-        console.error('Error details:', err.message, err.stack);
+        error(' Face proctoring setup error:', err);
+        error('Error details:', err.message, err.stack);
+        setError(err.message);
+        setIsLoading(false);
       }
     };
 

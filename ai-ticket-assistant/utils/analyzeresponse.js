@@ -16,7 +16,7 @@ export const analyzeResponse = async (responseText, question) => {
       },
     });
 
-    // 🔒 Robust JSON extraction (keep your safety logic)
+    //  Robust JSON extraction (keep your safety logic)
     let cleanText = result.output.trim()
       .replace(/^```json?\s*/i, "")
       .replace(/\s*```$/i, "");

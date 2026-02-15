@@ -1,8 +1,8 @@
-# AI-Powered Ticketing & Interview Assistant 🤖
+# AI-Powered Ticketing & Interview Assistant 
 
 A full-stack application designed to streamline customer support ticketing and enhance interview preparation with AI-driven assistance.
 
-## 🚀 Overview
+##  Overview
 
 This project provides a comprehensive solution for managing support tickets and offers an innovative AI-powered interview assistant. It combines a robust backend for data management and AI processing with a dynamic frontend for an intuitive user experience, all within a single repository.
 
@@ -24,9 +24,9 @@ This project provides a comprehensive solution for managing support tickets and 
 [![Bcrypt](https://img.shields.io/badge/Password_Hashing-Bcrypt-000000?logo=bcrypt&logoColor=white)](https://www.npmjs.com/package/bcrypt)
 
 
-## 📋 Table of Contents
+##  Table of Contents
 
-- [🚀 Overview](#-overview)
+- [ Overview](#-overview)
 - [🛡️ Badges](#️-badges)
 - [✨ Features](#-features)
 - [🏗️ Architecture](#️-architecture)
@@ -45,7 +45,7 @@ This project provides a comprehensive solution for managing support tickets and 
 -  **User Authentication**: Secure sign-up and login with JWT.
 - 🎫 **Ticket Management**: Create, view, update, and delete support tickets.
 - 🗣️ **AI-Powered Interview Assistant**: Real-time voice-based interview practice with AI feedback.
-- 💬 **Real-time Communication**: WebSockets for instant updates and interactive features.
+-  **Real-time Communication**: WebSockets for instant updates and interactive features.
 - 👑 **Admin Panel**: Dedicated interface for administrators to manage users and tickets.
 - 📧 **Email Notifications**: Automated emails for user sign-up and ticket creation.
 - 🧠 **Intelligent AI Responses**: Utilizes Gemini API for advanced conversational AI.

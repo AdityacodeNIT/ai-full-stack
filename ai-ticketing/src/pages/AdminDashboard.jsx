@@ -1,51 +1,31 @@
-import { useState, useEffect } from 'react';
-import api from '../utils/api.js';
+import { useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import {
+  fetchDashboardData, fetchUserDetails, updateUserRole
+  , setActiveTab, clearSelectedUser
+} from '../features/admin/admin.js';
 
 const AdminDashboard = () => {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [stats, setStats] = useState(null);
-  const [users, setUsers] = useState([]);
-  const [violations, setViolations] = useState([]);
-  const [analytics, setAnalytics] = useState(null);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const dispatch = useDispatch();
+
+  const {
+    activeTab,
+    stats,
+    users,
+    violations,
+    analytics,
+    selectedUser,
+    loading,
+    error,
+  } = useSelector((state) => state.admin);
+
+
+
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    dispatch(fetchDashboardData());
+  }, [dispatch]);
 
-  const fetchDashboardData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [statsRes, usersRes, violationsRes, analyticsRes] = await Promise.all([
-        api.get('/api/admin/stats'),
-        api.get('/api/admin/users'),
-        api.get('/api/admin/violations'),
-        api.get('/api/admin/analytics')
-      ]);
-
-      setStats(statsRes.data);
-      setUsers(usersRes.data);
-      setViolations(violationsRes.data);
-      setAnalytics(analyticsRes.data);
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err);
-      setError(err.response?.data?.error || 'Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchUserDetails = async (clerkUserId) => {
-    try {
-      const res = await api.get(`/api/admin/users/${clerkUserId}`);
-      setSelectedUser(res.data);
-    } catch (err) {
-      console.error('Error fetching user details:', err);
-    }
-  };
 
   if (loading) {
     return (
@@ -73,12 +53,11 @@ const AdminDashboard = () => {
           {['overview', 'users', 'violations', 'analytics'].map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 font-medium capitalize transition-colors ${
-                activeTab === tab
+              onClick={() => dispatch(setActiveTab(tab))}
+              className={`px-4 py-2 font-medium capitalize transition-colors ${activeTab === tab
                   ? 'text-blue-400 border-b-2 border-blue-400'
                   : 'text-gray-400 hover:text-white'
-              }`}
+                }`}
             >
               {tab}
             </button>
@@ -105,13 +84,13 @@ const AdminDashboard = () => {
               <StatCard
                 title="In Progress"
                 value={stats.inProgressInterviews}
-                icon="⏳"
+                icon=""
                 subtitle="Active interviews"
               />
               <StatCard
                 title="Total Violations"
                 value={stats.totalViolations}
-                icon="🚨"
+                icon=""
                 subtitle="Proctoring alerts"
               />
             </div>
@@ -158,7 +137,7 @@ const AdminDashboard = () => {
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-semibold">All Users</h2>
               <button
-                onClick={fetchDashboardData}
+                onClick={() => dispatch(fetchDashboardData())}
                 className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded"
               >
                 Refresh
@@ -182,11 +161,10 @@ const AdminDashboard = () => {
                     <tr key={user._id} className="border-t border-gray-700 hover:bg-gray-750">
                       <td className="px-6 py-4">{user.email}</td>
                       <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          user.role === 'admin' ? 'bg-purple-600' :
-                          user.role === 'moderator' ? 'bg-blue-600' :
-                          'bg-gray-600'
-                        }`}>
+                        <span className={`px-2 py-1 rounded text-xs ${user.role === 'admin' ? 'bg-purple-600' :
+                            user.role === 'moderator' ? 'bg-blue-600' :
+                              'bg-gray-600'
+                          }`}>
                           {user.role}
                         </span>
                       </td>
@@ -198,11 +176,10 @@ const AdminDashboard = () => {
                       </td>
                       <td className="px-6 py-4 text-center">
                         {user.stats.avgScore !== null ? (
-                          <span className={`font-semibold ${
-                            user.stats.avgScore >= 80 ? 'text-green-400' :
-                            user.stats.avgScore >= 60 ? 'text-yellow-400' :
-                            'text-red-400'
-                          }`}>
+                          <span className={`font-semibold ${user.stats.avgScore >= 80 ? 'text-green-400' :
+                              user.stats.avgScore >= 60 ? 'text-yellow-400' :
+                                'text-red-400'
+                            }`}>
                             {user.stats.avgScore}
                           </span>
                         ) : (
@@ -216,11 +193,28 @@ const AdminDashboard = () => {
                       </td>
                       <td className="px-6 py-4 text-center">
                         <button
-                          onClick={() => fetchUserDetails(user.clerkUserId)}
-                          className="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm"
+                          onClick={() => dispatch(fetchUserDetails(user.clerkUserId))}
+                          className="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm mr-2"
                         >
                           View Details
                         </button>
+                        <select
+                          value={user.role}
+                          onChange={(e) =>
+                            dispatch(
+                              updateUserRole({
+                                clerkUserId: user.clerkUserId,
+                                role: e.target.value,
+                              })
+                            )
+                          }
+
+                          className="bg-gray-700 text-white px-2 py-1 rounded text-sm"
+                        >
+                          <option value="user">User</option>
+                          <option value="moderator">Moderator</option>
+                          <option value="admin">Admin</option>
+                        </select>
                       </td>
                     </tr>
                   ))}
@@ -241,15 +235,14 @@ const AdminDashboard = () => {
                     <div>
                       <h3 className="text-lg font-semibold">{interview.role} - {interview.level}</h3>
                       <p className="text-gray-400 text-sm">
-                        User: {interview.userEmail} | 
+                        User: {interview.userEmail} |
                         Date: {new Date(interview.createdAt).toLocaleDateString()}
                       </p>
                     </div>
-                    <span className={`px-3 py-1 rounded text-sm ${
-                      interview.status === 'completed' ? 'bg-green-600' :
-                      interview.status === 'in-progress' ? 'bg-yellow-600' :
-                      'bg-gray-600'
-                    }`}>
+                    <span className={`px-3 py-1 rounded text-sm ${interview.status === 'completed' ? 'bg-green-600' :
+                        interview.status === 'in-progress' ? 'bg-yellow-600' :
+                          'bg-gray-600'
+                      }`}>
                       {interview.status}
                     </span>
                   </div>
@@ -264,18 +257,42 @@ const AdminDashboard = () => {
                           <div className="flex items-center gap-3">
                             <span className="text-2xl">
                               {violation.type === 'no_face' ? '👤' :
-                               violation.type === 'multiple_faces' ? '👥' :
-                               violation.type === 'object_detected' ? '📱' :
-                               violation.type === 'tab_switch' ? '🔄' :
-                               '⚠️'}
+                                violation.type === 'multiple_faces' ? '👥' :
+                                  violation.type.startsWith('prohibited_object') ? '📱' :
+                                    violation.type === 'tab_switch' ? '' :
+                                      ''}
                             </span>
                             <div>
                               <div className="font-medium capitalize">
                                 {violation.type.replace(/_/g, ' ')}
                               </div>
                               <div className="text-sm text-gray-400">
-                                Question #{violation.questionNumber}
+                                {violation.questionNumber ? `Question #${violation.questionNumber}` : 'During interview'}
                               </div>
+                              {/* Show confidence and object details if available */}
+                              {violation.metadata && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {violation.metadata.object && (
+                                    <span className="mr-3">
+                                      Object: {violation.metadata.object}
+                                    </span>
+                                  )}
+                                  {violation.metadata.confidence && (
+                                    <span className={`font-semibold ${
+                                      violation.metadata.confidence >= 0.8 ? 'text-red-400' :
+                                      violation.metadata.confidence >= 0.6 ? 'text-yellow-400' :
+                                      'text-gray-400'
+                                    }`}>
+                                      Confidence: {Math.round(violation.metadata.confidence * 100)}%
+                                    </span>
+                                  )}
+                                  {violation.metadata.count && (
+                                    <span className="ml-3">
+                                      Count: {violation.metadata.count}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="text-sm text-gray-400">
@@ -328,11 +345,10 @@ const AdminDashboard = () => {
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 {Object.entries(analytics.avgScoresByLevel).map(([level, score]) => (
                   <div key={level} className="bg-gray-700 p-4 rounded text-center">
-                    <div className={`text-3xl font-bold ${
-                      score >= 80 ? 'text-green-400' :
-                      score >= 60 ? 'text-yellow-400' :
-                      'text-red-400'
-                    }`}>
+                    <div className={`text-3xl font-bold ${score >= 80 ? 'text-green-400' :
+                        score >= 60 ? 'text-yellow-400' :
+                          'text-red-400'
+                      }`}>
                       {score}
                     </div>
                     <div className="text-sm text-gray-400 mt-2">{level}</div>
@@ -379,11 +395,12 @@ const AdminDashboard = () => {
                   <p className="text-gray-400">User Details & Interview History</p>
                 </div>
                 <button
-                  onClick={() => setSelectedUser(null)}
+                  onClick={() => dispatch(clearSelectedUser())}
                   className="text-gray-400 hover:text-white text-2xl"
                 >
                   ×
                 </button>
+
               </div>
 
               {/* User Info */}
@@ -416,11 +433,10 @@ const AdminDashboard = () => {
                             {new Date(interview.createdAt).toLocaleString()}
                           </p>
                         </div>
-                        <span className={`px-3 py-1 rounded text-sm ${
-                          interview.status === 'completed' ? 'bg-green-600' :
-                          interview.status === 'in-progress' ? 'bg-yellow-600' :
-                          'bg-gray-600'
-                        }`}>
+                        <span className={`px-3 py-1 rounded text-sm ${interview.status === 'completed' ? 'bg-green-600' :
+                            interview.status === 'in-progress' ? 'bg-yellow-600' :
+                              'bg-gray-600'
+                          }`}>
                           {interview.status}
                         </span>
                       </div>

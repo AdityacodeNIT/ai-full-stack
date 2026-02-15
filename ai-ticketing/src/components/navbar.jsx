@@ -7,10 +7,18 @@ import {
   SignUpButton,
   useUser,
 } from "@clerk/clerk-react";
+import { useInterviewLock } from "../context/InterviewLockContext";
 
 export default function Navbar() {
   const { user } = useUser();
+  console.log(user)
+  const { isInterviewActive } = useInterviewLock();
   const appName = "AI Interview Assistant";
+
+  // Hide navbar during active interview
+  if (isInterviewActive) {
+    return null;
+  }
 
   return (
     <div className="navbar bg-base-300 text-base-content shadow-lg">
@@ -50,6 +58,7 @@ export default function Navbar() {
       {/* CENTER */}
       <div className="navbar-center hidden lg:flex">
         <ul className="menu menu-horizontal px-1">
+          <li><Link to="/">Home</Link></li>
           <SignedOut>
             <li><SignUpButton mode="modal" /></li>
             <li><SignInButton mode="modal" /></li>

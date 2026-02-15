@@ -52,7 +52,7 @@ const FaceDetection = ({ interviewWS }) => {
           }
         }, 2000);
       } catch (err) {
-        console.error('❌ Proctoring error:', err);
+        console.error(' Proctoring error:', err);
       }
     };
 

@@ -1,4 +1,5 @@
 import axios from "axios";
+import { logger } from "./logger";
 
 // Axios instance
 const api = axios.create({
@@ -19,7 +20,7 @@ export const setClerkTokenGetter = (getter) => {
 // Request interceptor - add Clerk session token
 api.interceptors.request.use(
   async (config) => {
-    console.log("📤 API Request:", config.method?.toUpperCase(), config.url);
+    logger.log("📤 API Request:", config.method?.toUpperCase(), config.url);
     
     // Get token from Clerk if available
     if (clerkTokenGetter) {
@@ -27,15 +28,15 @@ api.interceptors.request.use(
         const token = await clerkTokenGetter();
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
-          console.log("✅ Added Clerk token to request");
+          logger.log(" Added Clerk token to request");
         } else {
-          console.warn("⚠️ No Clerk token available");
+          logger.warn(" No Clerk token available");
         }
       } catch (error) {
-        console.error("❌ Failed to get Clerk token:", error);
+        logger.error(" Failed to get Clerk token:", error);
       }
     } else {
-      console.warn("⚠️ Clerk token getter not set");
+      logger.warn(" Clerk token getter not set");
     }
     
     return config;
@@ -48,7 +49,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      console.warn("Unauthorized request - Clerk session may have expired");
+      logger.warn("Unauthorized request - Clerk session may have expired");
     }
     return Promise.reject(error);
   }

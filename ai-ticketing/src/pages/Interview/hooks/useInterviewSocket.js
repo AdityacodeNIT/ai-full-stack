@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
+import { logger } from '../../../utils/logger';
 
 /**
  * Handles interview WebSocket lifecycle and message routing
@@ -35,7 +36,7 @@ export function useInterviewSocket(interviewId, handlers = {}) {
 
         ws.onopen = () => {
           if (!mounted) return;
-          console.log('✅ WebSocket connected');
+          logger.log(' WebSocket connected');
           setStatus('connected');
         };
 
@@ -44,32 +45,32 @@ export function useInterviewSocket(interviewId, handlers = {}) {
 
           try {
             const msg = JSON.parse(event.data);
-            console.log('📨 WS message received:', msg.type);
+            logger.log('📨 WS message received:', msg.type);
 
             // Route message by type using current handlers
             if (handlersRef.current[msg.type]) {
               handlersRef.current[msg.type](msg, ws);
             } else {
-              console.warn('⚠️ Unhandled WS message:', msg.type);
+              console.warn(' Unhandled WS message:', msg.type);
             }
           } catch (err) {
-            console.error('❌ Failed to parse WS message:', err);
+            console.error(' Failed to parse WS message:', err);
           }
         };
 
         ws.onerror = (error) => {
           if (!mounted) return;
-          console.error('❌ WebSocket error:', error);
+          console.error(' WebSocket error:', error);
           setStatus('error');
         };
 
         ws.onclose = () => {
           if (!mounted) return;
-          console.log('🔴 WebSocket closed');
+          console.log(' WebSocket closed');
           setStatus('disconnected');
         };
       } catch (err) {
-        console.error('❌ Interview WS connection failed:', err);
+        console.error(' Interview WS connection failed:', err);
         if (mounted) setStatus('error');
       }
     };
@@ -96,7 +97,7 @@ export function useInterviewSocket(interviewId, handlers = {}) {
         wsRef.current.send(JSON.stringify(payload));
         console.log('📤 Sent WS message:', payload.type);
       } else {
-        console.warn('⚠️ Cannot send message, WebSocket not open:', wsRef.current?.readyState);
+        console.warn(' Cannot send message, WebSocket not open:', wsRef.current?.readyState);
       }
     },
   };

@@ -127,7 +127,7 @@ export default function Home() {
 
             <div className="card bg-base-100 shadow-lg">
               <div className="card-body items-center text-center">
-                <div className="text-4xl mb-4">🤖</div>
+                <div className="text-4xl mb-4"></div>
                 <h3 className="card-title">AI Analysis</h3>
                 <p>Intelligent question generation and response analysis</p>
               </div>
@@ -135,7 +135,7 @@ export default function Home() {
 
             <div className="card bg-base-100 shadow-lg">
               <div className="card-body items-center text-center">
-                <div className="text-4xl mb-4">📊</div>
+                <div className="text-4xl mb-4"></div>
                 <h3 className="card-title">Insights</h3>
                 <p>Get detailed reports and candidate evaluations</p>
               </div>
@@ -143,7 +143,7 @@ export default function Home() {
 
             <div className="card bg-base-100 shadow-lg">
               <div className="card-body items-center text-center">
-                <div className="text-4xl mb-4">💾</div>
+                <div className="text-4xl mb-4"></div>
                 <h3 className="card-title">History</h3>
                 <p>Access all past interviews and transcripts</p>
               </div>

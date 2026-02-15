@@ -10,10 +10,12 @@ import cookieParser from "cookie-parser";
 import userRoutes from "./routes/user.js";
 import interviewRoutes from "./routes/interview.js";
 import adminRoutes from "./routes/admin.js";
+import webhookRoutes from "./routes/webhooks.js";
 
 import { setupInterviewSocket } from "./websocket/server.js";
 import { createAssemblySocket } from "./websocket/assemblysocket.js";
 import { clerkMiddleware } from '@clerk/express'  
+import errorHandler from "./middleware/errorMiddleware.js";
 
 dotenv.config();
 
@@ -49,16 +51,16 @@ server.on("upgrade", async (req, socket, head) => {
         throw new Error("Invalid Clerk token - missing sub");
       }
 
-      // ✅ Attach clerkUserId to request
+      //  Attach clerkUserId to request
       req.clerkUserId = decoded.sub;
 
       interviewWSS.handleUpgrade(req, socket, head, (ws) => {
-        console.log("🔄 handleUpgrade callback - emitting connection event");
+     
         interviewWSS.emit("connection", ws, req);
-        console.log("✅ Connection event emitted");
+      
       });
     } catch (err) {
-      console.error("❌ Interview WS auth failed:", err.message);
+      console.error(" Interview WS auth failed:", err.message);
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();
     }
@@ -87,7 +89,7 @@ server.on("upgrade", async (req, socket, head) => {
         assemblyWSS.emit("connection", ws, req);
       });
     } catch (err) {
-      console.error("❌ Assembly WS auth failed:", err.message);
+      console.error(" Assembly WS auth failed:", err.message);
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();
     }
@@ -100,6 +102,10 @@ server.on("upgrade", async (req, socket, head) => {
 // ------------------------------
 // Express middlewares
 // ------------------------------
+
+// Webhook routes MUST come before other middleware (needs raw body)
+app.use("/api/webhook", webhookRoutes);
+
 const allowedOrigins = (() => {
   if (process.env.NODE_ENV === "production") {
     return [
@@ -129,6 +135,8 @@ app.use("/api/auth", userRoutes);
 app.use("/interview", interviewRoutes);
 app.use("/api/admin", adminRoutes);
 
+
+app.use(errorHandler);
 // ------------------------------
 // Start server + DB
 // ------------------------------
@@ -137,11 +145,11 @@ const PORT = process.env.PORT || 3000;
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
-    console.log("✅ MongoDB connected");
+    console.log(" MongoDB connected");
     server.listen(PORT, () => {
-      console.log(`🚀 Server + WS running at http://localhost:${PORT}`);
+      console.log(`Server + WS running at http://localhost:${PORT}`);
     });
   })
   .catch((err) => {
-    console.error("❌ MongoDB connection error:", err);
+    console.error(" MongoDB connection error:", err);
   });

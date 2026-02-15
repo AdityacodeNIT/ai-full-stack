@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { generateInterview, clearInterview } from '../../features/interview/interview';
+import { logger } from '../../utils/logger';
 
 const InterviewForm = () => {
   const [formData, setFormData] = useState({
@@ -89,7 +90,7 @@ const InterviewForm = () => {
       
       // Form will be reset by parent component or redirect will occur
     } catch (error) {
-      console.error('Interview generation failed:', error);
+      logger.error('Interview generation failed:', error);
       // Error will be handled by Redux state
     } finally {
       setIsSubmitting(false);
@@ -106,7 +107,7 @@ const InterviewForm = () => {
         if (parsed.interview) {
           const interviewState = JSON.parse(parsed.interview);
           if (interviewState.loading === true) {
-            console.log('🧹 Clearing stuck loading state from localStorage');
+            logger.log('🧹 Clearing stuck loading state from localStorage');
             interviewState.loading = false;
             interviewState.error = null;
             parsed.interview = JSON.stringify(interviewState);
@@ -115,7 +116,7 @@ const InterviewForm = () => {
           }
         }
       } catch (e) {
-        console.error('Error cleaning localStorage:', e);
+        logger.error('Error cleaning localStorage:', e);
       }
     }
 

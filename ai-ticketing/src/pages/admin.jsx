@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../utils/api.js";
+import { logger } from "../utils/logger.js";
 
 export default function AdminPanel() {
   const [users, setUsers] = useState([]);
@@ -13,17 +14,17 @@ export default function AdminPanel() {
   }, []);
 
   const fetchUsers = async () => {
-    console.log("📡 fetchUsers() called");
+    logger.log("📡 fetchUsers() called");
     try {
       const res = await api.get('/api/auth/getusers');
-      console.log("🧾 Response received:", res);
+      logger.log("🧾 Response received:", res);
 
       const data = res.data;
-      console.log(data);
+      logger.log(data);
       setUsers(data);
       setFilteredUsers(data);
     } catch (err) {
-      console.error("Error fetching users", err);
+      logger.error("Error fetching users", err);
     }
   };
 
@@ -54,7 +55,7 @@ export default function AdminPanel() {
       setFormData({ role: "", skills: "" });
       fetchUsers();
     } catch (err) {
-      console.error("Update failed", err);
+      logger.error("Update failed", err);
       const errorMessage = err.response?.data?.error || "Failed to update user";
       alert(errorMessage);
     }

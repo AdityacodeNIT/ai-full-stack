@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../../utils/api.js';
+import { logger } from '../../utils/logger.js';
 
 // Async thunk to call the backend API
 export const generateInterview = createAsyncThunk(
@@ -7,7 +8,7 @@ export const generateInterview = createAsyncThunk(
   async (formData, { rejectWithValue }) => {
     try {
       const res = await api.post('/interview', formData);
-      console.log(res.data)
+      logger.log(res.data)
       return res.data.interview; // contains _id and questions
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to generate interview');
@@ -20,7 +21,7 @@ export const getAllInterviews = createAsyncThunk(
     async (_, { rejectWithValue }) => {
         try {
             const res = await api.get('/interview');
-            console.log("the data",res.data)
+            logger.log("the data",res.data)
             return res.data.interviews;
         } catch (err) {
             return rejectWithValue(err.response?.data?.message || 'Failed to fetch interviews');
@@ -33,7 +34,7 @@ export const getInterviewById = createAsyncThunk(
     async (id, { rejectWithValue }) => {
         try {
             const res = await api.get(`/interview/${id}`);
-            console.log("the data",res.data)
+            logger.log("the data",res.data)
             return res.data.interview;
         } catch (err) {
             return rejectWithValue(err.response?.data?.message || 'Failed to fetch interview');

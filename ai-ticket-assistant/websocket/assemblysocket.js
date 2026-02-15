@@ -3,6 +3,7 @@ import { WebSocketServer } from "ws";
 import { getHandler } from "./server.js";
 
 class AssemblySocketHandler {
+
   constructor(userId, interviewWS, interviewHandler) {
     this.userId = userId;
     this.interviewWS = interviewWS;   
@@ -51,8 +52,9 @@ class AssemblySocketHandler {
           resolve();
         });
 
+
         this.transcriber.on("partial", (partial) => {
-          // Send partial transcripts to frontend for live display
+
           if (this.ws?.readyState === 1) {
             this.ws.send(JSON.stringify({
               type: "transcript",
@@ -95,16 +97,16 @@ class AssemblySocketHandler {
   }
 
   sendAudio(data) {
+
     if (!data?.byteLength) return;
-    
-    // Don't send audio if TTS is playing
     if (this.isTTSPlaying) return;
     
     if (this.isConnected && this.transcriber) {
       try {
         const buffer = data instanceof ArrayBuffer ? data : new Uint8Array(data).buffer;
         this.transcriber.sendAudio(buffer);
-      } catch {
+      } catch (err) {
+        console.error("Error sending audio:", err);
         this.close().catch(() => {});
       }
     } else if (this.isConnecting) {
@@ -144,7 +146,7 @@ class AssemblySocketHandler {
     if (isPlaying) {
       // Clear any pending audio when TTS starts
       this.audioBuffer = [];
-      // Reset transcript when new question starts
+    
       this.lastTranscript = "";
       this.previousTurnTranscript = "";
       this.hasSubmittedForCurrentQuestion = false;
@@ -189,11 +191,11 @@ export const createAssemblySocket = () => {
   const wss = new WebSocketServer({ noServer: true });
 
   wss.on("connection", (ws, req) => {
-    // ✅ Use Clerk userId (attached in index.js upgrade handler)
+    //  Use Clerk userId (attached in index.js upgrade handler)
     const userId = req.clerkUserId;
     
     if (!userId) {
-      console.error("❌ No Clerk userId found in Assembly WS connection");
+      console.error(" No Clerk userId found in Assembly WS connection");
       ws.close();
       return;
     }
@@ -202,7 +204,7 @@ export const createAssemblySocket = () => {
     const handler = getHandler(userId);
     
     if (!handler) {
-      console.error("❌ No active interview handler found for user", userId);
+      console.error(" No active interview handler found for user", userId);
       ws.close();
       return;
     }

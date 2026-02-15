@@ -1,108 +1,112 @@
 import express from "express"
 import User from "../models/user.model.js";
 import { clerkClient, getAuth, requireAuth } from "@clerk/express";
-import { attachClerkUserId } from "../middleware/clerkAuth.js";
+import ApiError from "../utils/apiError.js";
+import { logger } from "../utils/logger.js";
 
-const router = express.Router();
 
-/* ─────────────────────────────
-   WebSocket Token Endpoint
-───────────────────────────── */
-router.get("/ws-token", requireAuth(), async (req, res) => {
+export const getWsToken = async (req, res, next) => {
   try {
-    console.log("🔑 WS token request received");
-    
+    logger.log(" WS token endpoint hit");
+
     const auth = getAuth(req);
-    console.log("Auth object:", { 
-      userId: auth.userId, 
-      sessionId: auth.sessionId,
-      hasGetToken: typeof auth.getToken === 'function'
-    });
-    
-    const { userId, getToken } = auth;
-    
+    const { userId, sessionId, getToken } = auth;
+
     if (!userId) {
-      console.error("❌ No userId in auth");
-      return res.status(401).json({ error: "No authenticated user" });
+      throw new ApiError(401, "Not authenticated");
     }
 
-    // Get the session token directly from the request
-    const token = await getToken();
-    
-    if (!token) {
-      console.error("❌ No token returned from getToken()");
-      return res.status(401).json({ error: "No session token available" });
+    if (!sessionId) {
+      throw new ApiError(401, "No active session");
     }
 
-    console.log("✅ Token generated successfully for user:", userId);
-    
-    // Return the JWT token
-    res.json({ 
-      token,
-      userId 
-    });
+    // Method 1
+    if (typeof getToken === "function") {
+      const token = await getToken();
+      if (token) {
+        return res.json({
+          success: true,
+          token,
+          userId,
+        });
+      }
+    }
+
+    // Method 2
+    const session = await clerkClient.sessions.getSession(sessionId);
+    if (session?.lastActiveToken?.jwt) {
+      return res.json({
+        success: true,
+        token: session.lastActiveToken.jwt,
+        userId,
+      });
+    }
+
+    // Method 3
+    const token = await clerkClient.sessions.getToken(sessionId, "default");
+    if (token) {
+      return res.json({
+        success: true,
+        token,
+        userId,
+      });
+    }
+
+    throw new ApiError(500, "Failed to generate WebSocket token");
+
   } catch (error) {
-    console.error("❌ WS token error:", error);
-    res.status(500).json({ 
-      error: "Failed to generate WebSocket token",
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    next(error);
   }
-});
+};
 
-/* ─────────────────────────────
-   Get Current User Info
-───────────────────────────── */
-router.get("/me", requireAuth(), attachClerkUserId, async (req, res) => {
+export const getCurrentUser = async (req, res, next) => {
   try {
-    const { userId } = getAuth(req);
-    
-    // Get Clerk user data
+   const userId = req.clerkUserId;
+    if (!userId) {
+      throw new ApiError(401, "Unauthorized");
+    }
+
     const clerkUser = await clerkClient.users.getUser(userId);
-    
-    // Get MongoDB user data (if exists)
+
     let dbUser = await User.findOne({ clerkUserId: userId });
-    
-    // Create user in DB if doesn't exist
+
     if (!dbUser) {
+      logger.log(" New user detected, creating in MongoDB...");
+
+      const userCount = await User.countDocuments();
+      const role = userCount === 0 ? "admin" : "user";
+
+      await clerkClient.users.updateUser(userId, {
+        publicMetadata: { role }
+      });
+
       dbUser = await User.create({
         clerkUserId: userId,
         email: clerkUser.emailAddresses[0]?.emailAddress,
-        role: clerkUser.publicMetadata?.role || "user",
-        skills: [],
+        name: `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim(),
+        role
       });
+
+      logger.log(`User created: ${dbUser.email} with role: ${role}`);
     }
-    
+
     res.json({
-      user: {
-        id: userId,
+      success: true,
+      data: {
+        id: clerkUser.id,
         email: clerkUser.emailAddresses[0]?.emailAddress,
         role: clerkUser.publicMetadata?.role || dbUser.role,
-        skills: dbUser.skills,
-      },
-      authenticated: true,
+        name: `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim(),
+      }
     });
-  } catch (error) {
-    console.error("Get user error:", error);
-    res.status(500).json({ error: "Failed to fetch user data" });
-  }
-});
 
-/* ─────────────────────────────
-   Update User (ADMIN ONLY)
-───────────────────────────── */
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updateUser = async (req, res) => {
   try {
-    const { userId } = getAuth(req);
-
-    // Get logged-in Clerk user
-    const clerkUser = await clerkClient.users.getUser(userId);
-
-    // Admin check
-    if (clerkUser.publicMetadata?.role !== "admin") {
-      return res.status(403).json({ error: "forbidden" });
-    }
 
     let { skills = [], role, email } = req.body;
 
@@ -111,12 +115,14 @@ export const updateUser = async (req, res) => {
       return res.status(404).json({ error: "user not found" });
     }
 
-    // Normalize skills
+    // normalize skills 
+    
     skills = skills.map(skill =>
       typeof skill === "string"
         ? { name: skill, proficiency: 1 }
         : skill
     );
+
 
     await User.updateOne(
       { email },
@@ -127,39 +133,34 @@ export const updateUser = async (req, res) => {
     );
 
     return res.json({ message: "User updated successfully" });
-  } catch (error) {
+
+  }
+  
+  catch (error) {
     res.status(500).json({
       error: "update_failed",
       details: error.message,
     });
+
   }
 };
 
-/* ─────────────────────────────
-   Get All Users (ADMIN ONLY)
-───────────────────────────── */
-export const getUser = async (req, res) => {
+export const getUser = async (req, res, next) => {
   try {
-    const { userId } = getAuth(req);
-
-    const clerkUser = await clerkClient.users.getUser(userId);
-
-    if (clerkUser.publicMetadata?.role !== "admin") {
-      return res.status(403).json({ error: "forbidden" });
-    }
-
     const users = await User.find();
 
-    return res.json(users);
-  } catch (error) {
-    res.status(500).json({
-      error: "users_not_found",
-      details: error.message,
+    if (!users || users.length === 0) {
+      throw new ApiError(404, "Users not found");
+    }
+
+    res.json({
+      success: true,
+      data: users,
     });
+
+  } catch (error) {
+    next(error);
   }
 };
 
-router.post("/updateUser", requireAuth(), updateUser);
-router.get("/getusers", requireAuth(), getUser);
 
-export default router;

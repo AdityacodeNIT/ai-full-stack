@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 
-// Call Status Enum
 const CALL_STATUS = {
   INACTIVE: "INACTIVE",
   ACTIVE: "ACTIVE",
@@ -20,13 +19,16 @@ const DEMO_TRANSCRIPT = [
   { speaker: "You", text: "Yes, I am ready.", time: "10:02" },
 ];
 
+
 const Agent = ({ username = "Username" }) => {
   const [isSpeaking, setIsSpeaking] = useState(true);
   const [callStatus, setCallStatus] = useState(CALL_STATUS.INACTIVE);
   const [transcript, setTranscript] = useState(DEMO_TRANSCRIPT);
   const [input, setInput] = useState("");
 
+
   // Simulate call starting with a transcript message
+
   const handleCall = () => {
     setCallStatus(CALL_STATUS.CONNECTING);
     setTimeout(() => {
@@ -39,6 +41,7 @@ const Agent = ({ username = "Username" }) => {
   };
 
   // Simulated message sending in transcript (as "You")
+  
   const sendMessage = () => {
     if (!input.trim()) return;
     setTranscript([

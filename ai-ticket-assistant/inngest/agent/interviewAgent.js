@@ -1,39 +1,39 @@
 import { createAgent, gemini } from "@inngest/agent-kit";
 import Groq from "groq-sdk";
-import { prompt, evaluationPrompt, combinedPrompt, batchQuestionPrompt, batchEvaluationPrompt } from "./prompt.js";
+import {
+  prompt,
+  evaluationPrompt,
+  combinedPrompt,
+  batchQuestionPrompt,
+  batchEvaluationPrompt,
+} from "./prompt.js";
 import dotenv from "dotenv";
+import { logger } from "../../utils/logger.js";
 
 dotenv.config();
 
-/* ─────────────────────────────
-   PROVIDER SELECTION
-───────────────────────────── */
+// PROVIDER SELECTION
 
 const USE_GROQ = !!process.env.GROQ_API_KEY;
 
 if (USE_GROQ) {
-  console.log("🚀 Using Groq (unlimited free tier)");
+  logger.log(" Using Groq (unlimited free tier)");
 } else {
-  console.log("🔑 Using Gemini (limited free tier)");
+  logger.log(" Using Gemini (limited free tier)");
 }
 
-/* ─────────────────────────────
-   GROQ CLIENT
-───────────────────────────── */
+// GROQ CLIENT
 
 let groqClient;
 if (USE_GROQ) {
   groqClient = new Groq({
-    apiKey: process.env.GROQ_API_KEY
+    apiKey: process.env.GROQ_API_KEY,
   });
 }
 
-/* ─────────────────────────────
-   MULTI-KEY ROTATION (GEMINI)
-───────────────────────────── */
-
-const API_KEYS = process.env.GEMINI_API_KEYS 
-  ? process.env.GEMINI_API_KEYS.split(',').map(k => k.trim())
+// MULTI-KEY ROTATION (GEMINI)
+const API_KEYS = process.env.GEMINI_API_KEYS
+  ? process.env.GEMINI_API_KEYS.split(",").map((k) => k.trim())
   : [process.env.GEMINI_API_KEY];
 
 if (!USE_GROQ && (!API_KEYS.length || !API_KEYS[0])) {
@@ -45,17 +45,15 @@ let currentKeyIndex = 0;
 function getNextApiKey() {
   const key = API_KEYS[currentKeyIndex];
   currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
-  console.log(`🔑 Using Gemini API key ${currentKeyIndex + 1}/${API_KEYS.length}`);
+  logger.log(
+    `Using Gemini API key ${currentKeyIndex + 1}/${API_KEYS.length}`,
+  );
   return key;
 }
 
 if (!USE_GROQ) {
-  console.log(`✅ Loaded ${API_KEYS.length} Gemini API key(s)`);
+  logger.log(` Loaded ${API_KEYS.length} Gemini API key(s)`);
 }
-
-/* ─────────────────────────────
-   RATE LIMIT + CONCURRENCY GUARD
-───────────────────────────── */
 
 const MAX_CONCURRENT_CALLS = 2;
 const MIN_CALL_INTERVAL_MS = 1200;
@@ -85,11 +83,6 @@ function releaseSlot() {
   activeCalls = Math.max(0, activeCalls - 1);
 }
 
-/* ─────────────────────────────
-   BASE AGENTS WITH KEY ROTATION
-───────────────────────────── */
-
-// Wrapper that creates fresh agent with next API key on each call
 class RotatingAgent {
   constructor(name, systemPrompt) {
     this.name = name;
@@ -98,14 +91,16 @@ class RotatingAgent {
 
   async run(input, options) {
     await acquireSlot();
-    
+
     try {
       if (USE_GROQ) {
-        // Use Groq (unlimited free tier)
         const completion = await groqClient.chat.completions.create({
           messages: [
             { role: "system", content: this.systemPrompt },
-            { role: "user", content: input.input?.instruction || input.instruction }
+            {
+              role: "user",
+              content: input.input?.instruction || input.instruction,
+            },
           ],
           model: "llama-3.3-70b-versatile",
           temperature: 0.7,
@@ -113,12 +108,13 @@ class RotatingAgent {
         });
 
         return {
-          output: [{
-            content: completion.choices[0].message.content
-          }]
+          output: [
+            {
+              content: completion.choices[0].message.content,
+            },
+          ],
         };
       } else {
-        // Use Gemini (limited free tier)
         const apiKey = getNextApiKey();
         const agent = createAgent({
           name: this.name,
@@ -132,7 +128,7 @@ class RotatingAgent {
         return await agent.run(input, options);
       }
     } catch (err) {
-      console.error(`❌ ${this.name} failed:`, err?.message || err);
+      logger.error(` ${this.name} failed:`, err?.message || err);
       throw err;
     } finally {
       releaseSlot();
@@ -141,9 +137,27 @@ class RotatingAgent {
 }
 
 const interviewAgent = new RotatingAgent("Interview Agent", prompt);
-const interviewEvaluationAgent = new RotatingAgent("Interview Evaluation Agent", evaluationPrompt);
-const combinedAgent = new RotatingAgent("Combined Interview Agent", combinedPrompt);
-const batchQuestionAgent = new RotatingAgent("Batch Question Generator", batchQuestionPrompt);
-const batchEvaluationAgent = new RotatingAgent("Batch Evaluation Agent", batchEvaluationPrompt);
+const interviewEvaluationAgent = new RotatingAgent(
+  "Interview Evaluation Agent",
+  evaluationPrompt,
+);
+const combinedAgent = new RotatingAgent(
+  "Combined Interview Agent",
+  combinedPrompt,
+);
+const batchQuestionAgent = new RotatingAgent(
+  "Batch Question Generator",
+  batchQuestionPrompt,
+);
+const batchEvaluationAgent = new RotatingAgent(
+  "Batch Evaluation Agent",
+  batchEvaluationPrompt,
+);
 
-export { interviewAgent, interviewEvaluationAgent, combinedAgent, batchQuestionAgent, batchEvaluationAgent };
+export {
+  interviewAgent,
+  interviewEvaluationAgent,
+  combinedAgent,
+  batchQuestionAgent,
+  batchEvaluationAgent,
+};

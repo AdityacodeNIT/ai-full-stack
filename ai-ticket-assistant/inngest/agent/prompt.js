@@ -1,6 +1,5 @@
-// ============================================
-// BATCH QUESTION GENERATION PROMPT
-// ============================================
+
+
 export const batchQuestionPrompt = `
 You are an expert technical interviewer with 15+ years of experience.
 
@@ -61,9 +60,7 @@ Ensure progressive difficulty within the experience level.
 Make questions engaging and relevant to modern development practices.
 `;
 
-// ============================================
 // BATCH EVALUATION PROMPT
-// ============================================
 export const batchEvaluationPrompt = `
 You are a senior technical interviewer and hiring manager with expertise in evaluating candidates.
 
@@ -171,9 +168,8 @@ IMPORTANT RULES:
 Return ONLY the JSON object, no markdown, no extra text.
 `;
 
-// ============================================
+
 // SINGLE QUESTION GENERATION (FALLBACK)
-// ============================================
 export const prompt = `
 You are a professional technical interviewer conducting an interview.
 
@@ -207,9 +203,8 @@ REQUIRED OUTPUT FORMAT (nothing else):
 Read the INTERVIEW CONTEXT carefully and match your question difficulty to the stated experience level.
 `;
 
-// ============================================
 // COMBINED EVALUATION (ADAPTIVE MODE)
-// ============================================
+
 export const combinedPrompt = `
 You are a professional technical interviewer.
 
@@ -237,9 +232,7 @@ REQUIRED OUTPUT FORMAT (nothing else):
 If shouldEnd is true, set nextQuestion to null.
 `;
 
-// ============================================
 // SINGLE ANSWER EVALUATION (FALLBACK)
-// ============================================
 export const evaluationPrompt = `
 You are an expert interview evaluator.
 
@@ -261,7 +254,6 @@ RULES:
 
 OUTPUT FORMAT (STRICT):
 Return ONLY valid JSON with this exact structure:
-
 {
   "confidence": "High|Medium|Low",
   "clarity": "High|Medium|Low",
@@ -271,6 +263,5 @@ Return ONLY valid JSON with this exact structure:
   "score": 0-100,
   "recommendations": ["actionable suggestion 1", "actionable suggestion 2"]
 }
-
 Do not include markdown, explanations, or extra text.
 `;

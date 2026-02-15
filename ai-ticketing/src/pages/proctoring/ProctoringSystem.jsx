@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import FaceDetection from './FaceDetection';
 import ObjectDetector from './ObjectDetector';
+import { logger } from '../../utils/logger';
 
 const ProctoringSystem = ({ interviewWS }) => {
   const [violations, setViolations] = useState([]);
@@ -18,7 +19,7 @@ const ProctoringSystem = ({ interviewWS }) => {
       timestamp: new Date().toLocaleTimeString()
     };
     
-    console.log('📝 Adding violation to UI:', violation);
+    logger.log('📝 Adding violation to UI:', violation);
     setViolations(prev => [...prev, violation]);
   }, []);
 
@@ -26,7 +27,7 @@ const ProctoringSystem = ({ interviewWS }) => {
   const handleObjectDetection = useCallback((predictions) => {
     setObjectCount(predictions.length);
     if (predictions.length > 0) {
-      console.log('📦 Objects:', predictions.map(p => `${p.class} (${Math.round(p.score * 100)}%)`).join(', '));
+      logger.log('📦 Objects:', predictions.map(p => `${p.class} (${Math.round(p.score * 100)}%)`).join(', '));
     }
   }, []);
 
@@ -34,7 +35,7 @@ const ProctoringSystem = ({ interviewWS }) => {
   useEffect(() => {
     const initCamera = async () => {
       try {
-        console.log('📹 Initializing camera for proctoring...');
+        logger.log('📹 Initializing camera for proctoring...');
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
             width: 640, 
@@ -52,19 +53,19 @@ const ProctoringSystem = ({ interviewWS }) => {
             videoRef.current.onloadeddata = resolve;
           });
           
-          console.log('✅ Camera ready, video dimensions:', 
+          logger.log(' Camera ready, video dimensions:', 
             videoRef.current.videoWidth, 'x', videoRef.current.videoHeight);
           setCameraReady(true);
         }
       } catch (err) {
-        console.error('❌ Camera initialization error:', err);
+        logger.error(' Camera initialization error:', err);
       }
     };
 
     initCamera();
 
     return () => {
-      console.log('🧹 Cleaning up camera stream');
+      logger.log('🧹 Cleaning up camera stream');
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
@@ -118,9 +119,9 @@ const ProctoringSystem = ({ interviewWS }) => {
               {violations.map((v, idx) => (
                 <div key={idx} className="text-xs text-gray-300 flex justify-between">
                   <span>
-                    {v.type === 'no_face' && '⚠️ No face detected'}
-                    {v.type === 'multiple_faces' && '⚠️ Multiple faces detected'}
-                    {v.type === 'suspicious_object' && `⚠️ Suspicious: ${v.details?.objects}`}
+                    {v.type === 'no_face' && ' No face detected'}
+                    {v.type === 'multiple_faces' && ' Multiple faces detected'}
+                    {v.type === 'suspicious_object' && ` Suspicious: ${v.details?.objects}`}
                   </span>
                   <span className="text-gray-500">{v.timestamp}</span>
                 </div>

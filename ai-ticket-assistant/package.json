@@ -9,10 +9,18 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "inngest-dev": "npx i inggest-cli dev"
+    "inngest-dev": "npx i inggest-cli dev",
+    "test": "jest"
+  },
+  "jest": {
+    "transform": {}
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "@babel/preset-env": "^7.29.0",
+    "babel-jest": "^30.2.0",
+    "jest": "^30.2.0",
+    "nodemon": "^3.1.10",
+    "supertest": "^7.2.2"
   },
   "dependencies": {
     "@clerk/express": "^1.7.69",
@@ -34,6 +42,7 @@
     "node-fetch": "^3.3.2",
     "node-record-lpcm16": "^1.0.1",
     "nodemailer": "^7.0.5",
+    "svix": "^1.84.1",
     "ws": "^8.18.3",
     "zod": "^4.3.5"
   }

@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { getInterviewById, clearInterview } from "../features/interview/interview";
 import { useUser } from "@clerk/clerk-react";
+import { logger } from "../utils/logger";
 
 
 
@@ -15,7 +16,7 @@ const InterviewDetails = () => {
   const { interview, loading, error } = useSelector(
     (state) => state.interview
   );
-  console.log("Interview details state:", { interview, loading, error });
+  logger.log("Interview details state:", { interview, loading, error });
 
 useEffect(() => {
   // Clear previous interview data when ID changes
