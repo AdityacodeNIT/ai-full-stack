@@ -16,7 +16,7 @@ This project provides a comprehensive solution for managing support tickets and 
 [![WebSockets](https://img.shields.io/badge/Realtime-WebSockets-010101?logo=websocket&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
 [![Gemini API](https://img.shields.io/badge/AI-Gemini_API-blueviolet?logo=google&logoColor=white)](https://ai.google.dev/gemini)
 [![AssemblyAI](https://img.shields.io/badge/Speech_to_Text-AssemblyAI-4A4A4A?logo=assemblyai&logoColor=white)](https://www.assemblyai.com/)
-[![Vapi.ai](https://img.shields.io/badge/Voice_AI-Vapi.ai-FF69B4?logo=vapi&logoColor=white)](https://vapi.ai/)
+
 [![Redux](https://img.shields.io/badge/State_Management-Redux-764ABC?logo=redux&logoColor=white)](https://redux.js.org/)
 [![Inngest](https://img.shields.io/badge/Event_Driven-Inngest-6D28D9?logo=inngest&logoColor=white)](https://www.inngest.com/)
 [![Nodemailer](https://img.shields.io/badge/Email-Nodemailer-0078D4?logo=nodemailer&logoColor=white)](https://nodemailer.com/)
@@ -29,7 +29,7 @@ This project provides a comprehensive solution for managing support tickets and 
 - [ Overview](#-overview)
 - [🛡️ Badges](#️-badges)
 - [✨ Features](#-features)
-- [🏗️ Architecture](#️-architecture)
+- [ Architecture](#️-architecture)
 - [⚙️ Installation and Setup](#️-installation-and-setup)
   - [Clone the Repository](#clone-the-repository)
   - [Install Dependencies](#install-dependencies)
@@ -43,22 +43,22 @@ This project provides a comprehensive solution for managing support tickets and 
 ## ✨ Features
 
 -  **User Authentication**: Secure sign-up and login with JWT.
-- 🎫 **Ticket Management**: Create, view, update, and delete support tickets.
+
 - 🗣️ **AI-Powered Interview Assistant**: Real-time voice-based interview practice with AI feedback.
 -  **Real-time Communication**: WebSockets for instant updates and interactive features.
 - 👑 **Admin Panel**: Dedicated interface for administrators to manage users and tickets.
-- 📧 **Email Notifications**: Automated emails for user sign-up and ticket creation.
-- 🧠 **Intelligent AI Responses**: Utilizes Gemini API for advanced conversational AI.
+- 📧 **Email Notifications**: Automated emails for user sign-up and interview creation.
+-  **Intelligent AI Responses**: Utilizes Gemini API for advanced conversational AI.
 - 🎤 **Speech-to-Text**: Powered by AssemblyAI for accurate voice transcription.
-- 📞 **Voice AI Integration**: Seamless voice interactions via Vapi.ai.
+- 📞 **Voice AI Integration**: Seamless voice interactions via browser tts.
 
-## 🏗️ Architecture
+##  Architecture
 
 This project follows a monorepo structure, housing both the frontend and backend components in a single repository.
 
 ```
 .
-├── ai-ticket-assistant/ (Backend - Node.js, Express, MongoDB)
+├── ai-interview-assistant/ (Backend - Node.js, Express, MongoDB)
 │   ├── controllers/
 │   ├── models/
 │   ├── routes/
@@ -67,7 +67,7 @@ This project follows a monorepo structure, housing both the frontend and backend
 │   ├── websocket/
 │   ├── inngest/
 │   └── index.js
-└── ai-ticketing/ (Frontend - React, Redux, Tailwind CSS)
+└── ai-interview/ (Frontend - React, Redux, Tailwind CSS)
     ├── public/
     ├── src/
     │   ├── assets/
@@ -79,7 +79,7 @@ This project follows a monorepo structure, housing both the frontend and backend
     └── index.html
 ```
 
-The `ai-ticket-assistant` directory contains the backend services, including API endpoints, database models, authentication middleware, and WebSocket handlers. The `ai-ticketing` directory holds the React-based frontend, responsible for the user interface and interaction with the backend APIs.
+The `ai-interview-assistant` directory contains the backend services, including API endpoints, database models, authentication middleware, and WebSocket handlers. The `ai-ticketing` directory holds the React-based frontend, responsible for the user interface and interaction with the backend APIs.
 
 ## ⚙️ Installation and Setup
 
@@ -98,7 +98,7 @@ Navigate into each directory and install the respective dependencies:
 
 ```bash
 # Install backend dependencies
-cd ai-ticket-assistant
+cd ai-interview-assistant
 npm install
 
 # Install frontend dependencies
@@ -108,9 +108,9 @@ npm install
 
 ### Configure Environment Variables
 
-Create `.env` files in both `ai-ticket-assistant/` and `ai-ticketing/` directories.
+Create `.env` files in both `ai-interview-assistant/` and `ai-ticketing/` directories.
 
-#### Backend (`ai-ticket-assistant/.env`)
+#### Backend (`ai-interview-assistant/.env`)
 
 ```env
 MONGO_URI=your_mongodb_connection_string
@@ -137,8 +137,8 @@ VITE_WS_URL=ws://localhost:3000
 Start both the backend and frontend servers.
 
 ```bash
-# Start backend server (from ai-full-stack/ai-ticket-assistant directory)
-cd ai-ticket-assistant
+
+cd ai-interview-assistant
 npm run dev
 
 # In a new terminal, start frontend server (from ai-full-stack/ai-ticketing directory)
@@ -161,19 +161,13 @@ Here's a step-by-step guide on how to use the AI-Powered Ticketing & Interview A
     *   After signing up, log in with your credentials (e.g., `http://localhost:5173/login`).
     *   *(Placeholder for Screenshot/GIF: Login page)*
 
-3.  **Ticket Management**:
-    *   Once logged in, you can access the ticketing system.
-    *   **Create a New Ticket**: Click on "Create Ticket", fill in the details, and submit.
-    *   **View Tickets**: Browse through existing tickets, filter by status, and view details.
-    *   *(Placeholder for Screenshot/GIF: Ticket creation/listing page)*
-
-4.  **AI Interview Assistant**:
+3.  **AI Interview Assistant**:
     *   Go to the interview section (e.g., `http://localhost:5173/interview`).
     *   Start a new interview session. The AI will ask questions, and you can respond verbally.
     *   Receive real-time feedback and suggestions from the AI.
     *   *(Placeholder for Screenshot/GIF: Interview session in progress)*
 
-5.  **Admin Functionality (if applicable)**:
+4.  **Admin Functionality (if applicable)**:
     *   If you have admin privileges, navigate to the admin dashboard (e.g., `http://localhost:5173/admin`).
     *   Manage users, view all tickets, and perform administrative tasks.
     *   *(Placeholder for Screenshot/GIF: Admin dashboard)*
@@ -201,7 +195,6 @@ Here's a step-by-step guide on how to use the AI-Powered Ticketing & Interview A
     *   [Inngest](https://www.inngest.com/) - Event-driven serverless functions.
     *   [Gemini API](https://ai.google.dev/gemini) - Google's AI model for conversational AI.
     *   [AssemblyAI](https://www.assemblyai.com/) - AI models for speech-to-text transcription.
-    *   [Vapi.ai](https://vapi.ai/) - Voice AI platform for building conversational agents.
     *   [Fluent-ffmpeg](https://www.npmjs.com/package/fluent-ffmpeg) - A fluent API for `ffmpeg`.
     *   [Node-record-lpcm16](https://www.npmjs.com/package/node-record-lpcm16) - Record audio from a microphone.
 

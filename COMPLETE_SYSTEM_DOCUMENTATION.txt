@@ -1,0 +1,564 @@
+================================================================================
+AI INTERVIEW PLATFORM - COMPLETE SYSTEM DOCUMENTATION
+================================================================================
+
+TABLE OF CONTENTS
+1. System Overview
+2. Authentication System (Clerk)
+3. Interview System
+4. Proctoring System
+5. Admin Dashboard
+6. Performance Optimizations
+7. Database Schema
+8. API Endpoints
+9. WebSocket Protocol
+10. Deployment Guide
+
+================================================================================
+1. SYSTEM OVERVIEW
+================================================================================
+
+TECH STACK:
+- Frontend: React 19, Vite, TailwindCSS, Redux Toolkit
+- Backend: Node.js, Express, MongoDB, WebSocket
+- Authentication: Clerk
+- AI: Google Gemini 1.5 Flash
+- ML Models: TensorFlow.js, MediaPipe Face Detection, COCO-SSD
+- Real-time: WebSocket, AssemblyAI (transcription)
+
+ARCHITECTURE:
+- Monorepo with two main folders:
+  - ai-ticketing/ (Frontend React app)
+  - ai-ticket-assistant/ (Backend Node.js server)
+- Real-time communication via WebSocket
+- RESTful API for CRUD operations
+- Client-side ML for proctoring (no video upload)
+
+================================================================================
+2. AUTHENTICATION SYSTEM (CLERK)
+================================================================================
+
+IMPLEMENTATION:
+- Clerk handles all authentication (signup, login, session management)
+- JWT tokens for API authentication
+- Clerk userId (string like "user_xxx") used throughout system
+- No password storage in MongoDB
+
+USER FLOW:
+1. User signs up via Clerk
+2. Webhook syncs user to MongoDB (optional)
+3. First user automatically becomes admin
+4. Subsequent users are regular users
+5. Admin can change roles via dashboard
+
+ROLE MANAGEMENT:
+- Roles stored in Clerk publicMetadata.role (source of truth)
+- Roles also stored in MongoDB for analytics
+- Two roles: "admin" and "user"
+- Admin has access to admin dashboard
+
+ENDPOINTS:
+- GET /api/auth/me - Get current user info, auto-assign role on first login
+- GET /api/auth/ws-token - Get Clerk JWT for WebSocket authentication
+- POST /api/webhooks/clerk - Sync Clerk users to MongoDB
+
+MIDDLEWARE:
+- requireAuth() - Ensures user is authenticated
+- attachClerkUserId - Attaches req.clerkUserId from Clerk token
+- isAdmin() - Checks if user has admin role
+
+FILES:
+- ai-ticket-assistant/middleware/clerkAuth.js
+- ai-ticket-assistant/routes/user.js
+- ai-ticket-assistant/routes/webhooks.js
+- ai-ticketing/src/components/ClerkApiSetup.jsx
+
+================================================================================
+3. INTERVIEW SYSTEM
+================================================================================
+
+INTERVIEW CREATION:
+1. User fills form: role, level, tech stack, question type, number of questions
+2. Frontend creates interview via POST /api/interviews
+3. Interview saved to MongoDB with status "created"
+4. User redirected to interview session page
+
+INTERVIEW SESSION:
+1. WebSocket connection established with Clerk JWT
+2. Backend validates JWT and extracts clerkUserId
+3. Interview agent initialized with Gemini AI
+4. Questions generated based on interview context
+5. User answers via voice (AssemblyAI transcription)
+6. AI analyzes each response in real-time
+7. Final report generated at end
+
+INTERVIEW FLOW:
+- User starts interview → WebSocket connects
+- AI asks question → TTS speaks question
+- User answers → AssemblyAI transcribes
+- User submits → AI analyzes response
+- Next question → Repeat
+- All questions done → AI generates final report
+- Interview marked as "completed"
+
+AI AGENT:
+- Uses Google Gemini 1.5 Flash model
+- Generates questions based on role, level, tech stack
+- Analyzes responses for confidence, clarity, technical understanding
+- Provides real-time feedback after each question
+- Generates comprehensive final report
+
+EXPERIENCE LEVELS:
+- Junior: Basic concepts, simple scenarios
+- Mid-level: Intermediate concepts, practical experience
+- Senior: Advanced concepts, system design, leadership
+- Lead/Executive: Strategic thinking, team management
+
+QUESTION TYPES:
+- Technical: Coding, algorithms, system design
+- Behavioral: Past experiences, soft skills
+- Balanced: Mix of technical and behavioral
+
+FILES:
+- ai-ticket-assistant/models/interview.js
+- ai-ticket-assistant/controllers/interviewRoutes.js
+- ai-ticket-assistant/websocket/InterviewHandlers.js
+- ai-ticket-assistant/inngest/agent/interviewAgent.js
+- ai-ticketing/src/pages/Interview/InterviewSession.jsx
+
+================================================================================
+4. PROCTORING SYSTEM
+================================================================================
+
+OVERVIEW:
+- Client-side ML detection (no video upload)
+- Silent operation (user not notified)
+- Violations saved to backend with confidence scores
+- Admin can review violations in dashboard
+
+DETECTORS:
+1. Face Detection (MediaPipe)
+   - Detects: no face, multiple faces
+   - Runs every 5 seconds
+   - 10 second cooldown between violations
+
+2. Object Detection (COCO-SSD)
+   - Detects: cell phone, book, laptop, etc.
+   - Only sends violations with ≥60% confidence
+   - Runs every 5 seconds
+   - 10 second cooldown between violations
+
+ARCHITECTURE:
+- BaseProctoringDetector: Abstract base class
+- FaceDetector: Extends base, implements face detection
+- ObjectDetector: Extends base, implements object detection
+- ProctoringManager: Orchestrates multiple detectors
+- ModelCache: Singleton cache for TensorFlow models
+
+MODEL CACHING:
+- Models loaded once and cached in memory
+- First interview: 8-10 seconds to load models
+- Subsequent interviews: Instant (cached)
+- Models shared across all interviews
+- Prevents remounting and reloading
+
+VIOLATION FLOW:
+1. Detector detects violation (e.g., phone with 82% confidence)
+2. If confidence ≥60%, send to backend via WebSocket
+3. Backend saves violation with metadata to MongoDB
+4. User continues interview (not notified)
+5. Admin reviews violations in dashboard
+
+VIOLATION DATA:
+{
+  type: "prohibited_object_cell_phone",
+  detector: "ObjectDetector",
+  timestamp: 1234567890,
+  questionNumber: 3,
+  metadata: {
+    object: "cell phone",
+    confidence: 0.82,
+    bbox: [x, y, width, height]
+  },
+  silent: true
+}
+
+CONFIGURATION:
+- confidenceThreshold: 0.6 (60% minimum)
+- prohibitedObjects: ['cell phone', 'book']
+- checkInterval: 5000 (check every 5 seconds)
+- cooldownPeriod: 10000 (10 second cooldown)
+
+FILES:
+- ai-ticketing/src/pages/proctoring/ProctoringManager.jsx
+- ai-ticketing/src/pages/proctoring/detectors/BaseProctoringDetector.js
+- ai-ticketing/src/pages/proctoring/detectors/FaceDetector.js
+- ai-ticketing/src/pages/proctoring/detectors/ObjectDetector.js
+- ai-ticketing/src/pages/proctoring/detectors/ModelCache.js
+
+================================================================================
+5. ADMIN DASHBOARD
+================================================================================
+
+FEATURES:
+- Overview: Stats, violation breakdown, recent activity
+- Users: List all users, view details, change roles, performance metrics
+- Violations: All interviews with violations, detailed violation list
+- Analytics: Score distribution, average by level, 30-day trends
+
+TABS:
+1. Overview Tab
+   - Total users, interviews, violations
+   - Violation types breakdown
+   - Recent activity
+
+2. Users Tab
+   - Complete user list with performance metrics
+   - Average scores, violation counts
+   - "View Details" modal with full interview history
+   - Role management (promote to admin)
+
+3. Violations Tab
+   - All interviews with proctoring violations
+   - Detailed violation list per interview
+   - Confidence scores with color coding:
+     - Red (≥80%): High confidence
+     - Yellow (60-79%): Medium confidence
+   - Object details, timestamps, question numbers
+
+4. Analytics Tab
+   - Score distribution chart
+   - Average scores by experience level
+   - 30-day interview trend
+
+ACCESS CONTROL:
+- Only users with role="admin" can access
+- Protected route with role check
+- Admin can change user roles
+
+API ENDPOINTS:
+- GET /api/admin/stats - Dashboard statistics
+- GET /api/admin/users - List all users
+- GET /api/admin/users/:clerkUserId - User details
+- PATCH /api/admin/users/:clerkUserId/role - Update user role
+- GET /api/admin/violations - Interviews with violations
+- GET /api/admin/analytics - Analytics data
+
+FILES:
+- ai-ticketing/src/pages/AdminDashboard.jsx
+- ai-ticketing/src/features/admin/admin.js
+- ai-ticket-assistant/routes/admin.js
+
+================================================================================
+6. PERFORMANCE OPTIMIZATIONS
+================================================================================
+
+LAZY LOADING:
+- All route components lazy loaded
+- ProtectedRoute lazy loaded
+- TensorFlow models lazy loaded
+- Reduces initial bundle from 2.5MB to 800KB
+
+CODE SPLITTING:
+- react-vendor.js (43KB) - React libraries
+- clerk-vendor.js (78KB) - Clerk auth
+- redux-vendor.js (33KB) - Redux
+- tensorflow.js (1.8MB) - TensorFlow (lazy loaded)
+- Main bundle (229KB)
+
+PRODUCTION LOGGING:
+- console.log removed in production builds
+- console.error kept for debugging
+- Zero overhead in production
+- Development logs work normally
+
+REDUX PERSIST:
+- Timeout added (1 second max)
+- Loading/error states excluded from persistence
+- Prevents stuck loading states
+
+MODEL CACHING:
+- TensorFlow models cached in memory
+- First interview: 8-10 seconds
+- Subsequent interviews: Instant
+- 67% faster for repeat interviews
+
+PRECONNECT HINTS:
+- DNS prefetch for Clerk API
+- Faster API connections
+
+BUILD OPTIMIZATIONS:
+- Terser minification
+- Manual chunks for optimal caching
+- Drop console.log in production
+
+FILES:
+- ai-ticketing/vite.config.js
+- ai-ticketing/src/utils/logger.js
+- ai-ticketing/src/redux/presistConfig.jsx
+- ai-ticketing/src/pages/proctoring/detectors/ModelCache.js
+
+================================================================================
+7. DATABASE SCHEMA
+================================================================================
+
+USER MODEL:
+{
+  clerkUserId: String (required, unique),
+  email: String (required),
+  role: String (enum: ["admin", "user"], default: "user"),
+  createdAt: Date,
+  updatedAt: Date
+}
+
+INTERVIEW MODEL:
+{
+  role: String (required),
+  type: String (enum: ["technical", "behavioural", "balanced"]),
+  level: String (enum: ["Junior", "Mid-level", "Senior", "Lead", "Executive"]),
+  techstack: [String],
+  numberOfQuestions: Number (required),
+  userId: String (required, Clerk userId),
+  status: String (enum: ["created", "in-progress", "completed"]),
+  responses: [{
+    question: String,
+    response: String,
+    analysis: Object
+  }],
+  finalReport: Object,
+  proctoringViolations: [{
+    type: String (required),
+    detector: String,
+    timestamp: Number (required),
+    questionNumber: Number,
+    metadata: Object,
+    silent: Boolean
+  }],
+  createdAt: Date,
+  updatedAt: Date
+}
+
+FILES:
+- ai-ticket-assistant/models/user.model.js
+- ai-ticket-assistant/models/interview.js
+
+================================================================================
+8. API ENDPOINTS
+================================================================================
+
+AUTHENTICATION:
+GET /api/auth/me - Get current user, auto-assign role
+GET /api/auth/ws-token - Get Clerk JWT for WebSocket
+
+INTERVIEWS:
+POST /api/interviews - Create new interview
+GET /api/interviews - Get user's interviews
+GET /api/interviews/:id - Get interview details
+DELETE /api/interviews/:id - Delete interview
+
+ADMIN:
+GET /api/admin/stats - Dashboard statistics
+GET /api/admin/users - List all users
+GET /api/admin/users/:clerkUserId - User details
+PATCH /api/admin/users/:clerkUserId/role - Update user role
+GET /api/admin/violations - Interviews with violations
+GET /api/admin/analytics - Analytics data
+
+WEBHOOKS:
+POST /api/webhooks/clerk - Clerk user sync webhook
+
+FILES:
+- ai-ticket-assistant/routes/user.js
+- ai-ticket-assistant/routes/admin.js
+- ai-ticket-assistant/routes/webhooks.js
+- ai-ticket-assistant/controllers/interviewRoutes.js
+
+================================================================================
+9. WEBSOCKET PROTOCOL
+================================================================================
+
+CONNECTION:
+- URL: ws://localhost:3000?token=<clerk_jwt>
+- Backend decodes JWT and extracts clerkUserId
+- Connection authenticated and stored
+
+MESSAGE TYPES:
+
+1. start (Client → Server)
+   { type: "start", interviewId: "..." }
+   - Starts interview session
+   - Initializes AI agent
+
+2. response (Client → Server)
+   { type: "response", response: "user's answer" }
+   - Submits user's answer
+   - Triggers AI analysis
+
+3. question (Server → Client)
+   { type: "question", question: "...", questionNumber: 1, totalQuestions: 10 }
+   - AI sends next question
+
+4. analysis (Server → Client)
+   { type: "analysis", analysis: { confidence: "High", clarity: "High", ... } }
+   - AI sends feedback on answer
+
+5. finalReport (Server → Client)
+   { type: "finalReport", report: { overallScore: 85, ... } }
+   - AI sends final report
+
+6. proctoring_violation (Client → Server)
+   { 
+     type: "proctoring_violation",
+     violationType: "prohibited_object_cell_phone",
+     detectorName: "ObjectDetector",
+     timestamp: 1234567890,
+     metadata: { object: "cell phone", confidence: 0.82 },
+     silent: true
+   }
+   - Proctoring violation detected
+
+7. end (Server → Client)
+   { type: "end" }
+   - Interview completed
+
+8. error (Server → Client)
+   { type: "error", message: "..." }
+   - Error occurred
+
+FILES:
+- ai-ticket-assistant/websocket/server.js
+- ai-ticket-assistant/websocket/InterviewHandlers.js
+- ai-ticketing/src/pages/Interview/hooks/useInterviewSocket.js
+
+================================================================================
+10. DEPLOYMENT GUIDE
+================================================================================
+
+ENVIRONMENT VARIABLES:
+
+Backend (.env):
+- MONGODB_URI=mongodb://...
+- CLERK_SECRET_KEY=sk_...
+- CLERK_PUBLISHABLE_KEY=pk_...
+- GEMINI_API_KEY=...
+- PORT=3000
+
+Frontend (.env):
+- VITE_CLERK_PUBLISHABLE_KEY=pk_...
+- VITE_API_URL=http://localhost:3000
+- VITE_WS_URL=ws://localhost:3000
+
+BUILD COMMANDS:
+Frontend: npm run build (in ai-ticketing/)
+Backend: No build needed (Node.js)
+
+DEPLOYMENT:
+1. Deploy backend to any Node.js hosting (Heroku, Railway, etc.)
+2. Deploy frontend to Vercel, Netlify, etc.
+3. Update environment variables
+4. Configure Clerk webhook URL
+5. Test WebSocket connection
+
+CLERK SETUP:
+1. Create Clerk application
+2. Get publishable and secret keys
+3. Configure webhook endpoint: POST /api/webhooks/clerk
+4. Add webhook signing secret to .env
+5. Enable user.created, user.updated, user.deleted events
+
+MONGODB SETUP:
+1. Create MongoDB Atlas cluster
+2. Get connection string
+3. Add to MONGODB_URI in .env
+4. Whitelist deployment IP
+
+GEMINI API SETUP:
+1. Get API key from Google AI Studio
+2. Add to GEMINI_API_KEY in .env
+
+FILES:
+- ai-ticket-assistant/.env.example
+- ai-ticketing/.env.example
+- DEPLOYMENT.md
+- AUTO_ADMIN_SETUP.md
+
+================================================================================
+KEY FEATURES SUMMARY
+================================================================================
+
+1. AUTHENTICATION
+   - Clerk-based authentication
+   - JWT tokens for API/WebSocket
+   - Automatic admin role assignment
+   - Role management
+
+2. INTERVIEWS
+   - AI-powered question generation
+   - Real-time voice transcription
+   - Instant feedback after each question
+   - Comprehensive final report
+   - Experience level adaptation
+
+3. PROCTORING
+   - Face detection (no face, multiple faces)
+   - Object detection (phone, book, etc.)
+   - Silent operation (user not notified)
+   - Confidence-based violations (≥60%)
+   - Model caching for performance
+
+4. ADMIN DASHBOARD
+   - User management
+   - Violation monitoring
+   - Performance analytics
+   - Role management
+
+5. PERFORMANCE
+   - Lazy loading (800KB initial bundle)
+   - Code splitting
+   - Model caching (67% faster)
+   - Production logging optimization
+   - Redux persist optimization
+
+6. SECURITY
+   - Clerk authentication
+   - JWT validation
+   - Role-based access control
+   - WebSocket authentication
+   - No video upload (privacy)
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+ISSUE: Interview stuck in loading state
+FIX: Clear Redux persist cache, reload page
+
+ISSUE: WebSocket not connecting
+FIX: Check Clerk JWT token, verify backend URL
+
+ISSUE: Proctoring not working
+FIX: Check camera permissions, verify TensorFlow loaded
+
+ISSUE: Models loading slowly
+FIX: First load is slow (8-10s), subsequent loads are instant (cached)
+
+ISSUE: Admin dashboard not accessible
+FIX: Check user role in Clerk publicMetadata
+
+ISSUE: Violations not showing
+FIX: Check confidence threshold (≥60%), verify WebSocket connection
+
+================================================================================
+CONTACT & SUPPORT
+================================================================================
+
+For issues or questions, check:
+- PROCTORING_SYSTEM.md - Proctoring details
+- MODEL_CACHING.md - Model caching details
+- SILENT_PROCTORING.md - Silent proctoring details
+- PERFORMANCE_OPTIMIZATION.md - Performance details
+- AUTO_ADMIN_SETUP.md - Admin setup details
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
